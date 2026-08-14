@@ -23,9 +23,9 @@ CORE_PRINCIPLES = """# Core Principles
 
 WORKFLOW = """# Autonomous Cyber Reasoning Workflow
 
-Drive the following 11-step pipeline. Use the coding tools (read/write/edit/find/grep/bash) plus the
-CRS tools (repo_analyze, vuln_scan, dependency_scan, patch_apply, build_project, run_tests,
-security_validate, generate_report, case_manager) to execute it autonomously.
+Drive the following pipeline autonomously. Adapt the steps based on target type (source repository vs. binary vs. network service).
+
+## When source code is available:
 
 1. READ THE REPOSITORY: Call repo_analyze to map structure, languages, build system, test framework, and entry points. Read the manifest/build files and the main entry points.
 2. UNDERSTAND THE SOFTWARE: Trace the architecture — how data flows from inputs (CLI args, HTTP handlers, file reads, network sockets, deserializers) into sinks (queries, shell commands, file writes, eval sites). Note trust boundaries.
@@ -39,8 +39,19 @@ security_validate, generate_report, case_manager) to execute it autonomously.
 10. PROVE THE VULNERABILITY IS FIXED: Compare pre-patch and post-patch validation results. A vulnerability is fixed only when the trigger no longer succeeds and the finding is marked PATCHED/FIXED in the case.
 11. PRODUCE A PROFESSIONAL REPORT: Call generate_report to write the final report (Markdown + JSON) covering methodology, findings, patches, build/test/validation evidence, and conclusions.
 
-Iterate as needed: if the build or tests fail after patching, fix the patch and re-verify. If new
-findings surface during validation, loop back to step 4."""
+## When source code is NOT available (black-box / binary / network service):
+
+1. BINARY ANALYSIS: Call binary_analyze on the target binary to extract symbols, imports, strings, architecture, and security hardening flags (NX, PIE, RELRO, canary). Identify dangerous symbols (system, exec, strcpy, sprintf, gets) and interesting strings (credentials, URLs, SQL queries).
+2. DYNAMIC ANALYSIS: Call dynamic_analyze under strace (and ltrace if available) to observe syscalls and library calls at runtime. Look for crashes (segfault, abort), dangerous syscalls (execve, mprotect, open with O_CREAT), and file/network access patterns.
+3. FUZZING: Call fuzz_target to run a fuzzing campaign. Provide a seed input that exercises the target parser or handler. Monitor for crashes, hangs, and abnormal exits. Collect crash inputs for triage.
+4. SERVICE RECONNAISSANCE: Call service_analyze to discover open ports and grab service banners on network-exposed targets. Identify service versions for CVE lookup.
+5. EXPLAIN AND DOCUMENT: For each finding, document the vulnerability class, the trigger input or condition, and the potential impact. Even without source, you can report CWE categories based on observed behavior.
+6. REPORT: Call generate_report with all findings, dynamic traces, and crash inputs.
+
+## General rules:
+- Iterate as needed: if the build or tests fail after patching, fix the patch and re-verify. If new findings surface during validation, loop back.
+- Always use dry_run=true with patch_apply before applying real patches.
+- For binaries without source, suggest recompilation with debug symbols or ASAN for better triage."""
 
 SECURITY_ANALYSIS = """# Security Analysis Capabilities
 
@@ -51,6 +62,33 @@ Pattern-based detection of common vulnerability classes across source files, wit
 - Insecure deserialization: pickle.loads, yaml.load, unsafe JSON/eval-based deserializers
 - Cryptographic misuse: MD5/SHA1 for passwords, hardcoded keys, weak randomness
 - Secrets in source: API keys, private keys, passwords, tokens committed to the repo
+
+## Binary static analysis (binary_analyze)
+When source is unavailable, analyze compiled binaries:
+- ELF/PE/Mach-O parsing, architecture detection, symbol tables (exported/imported)
+- Security hardening flags: NX bit, PIE/ASLR, RELRO, stack canaries
+- Dangerous symbols: system, exec, popen, strcpy, sprintf, gets, scanf, strcat
+- Interesting strings: base64 blobs, passwords, API keys, URLs, SQL queries, XSS sinks
+
+## Dynamic analysis (dynamic_analyze)
+Runtime behavior observation:
+- strace: syscall tracing (open, read, write, execve, socket, connect, mprotect)
+- ltrace: library call tracing (malloc, free, strcpy, printf)
+- Crash detection: segfault, SIGABRT, bus error, core dump
+- Timeout and hang detection
+
+## Fuzzing (fuzz_target)
+Coverage-guided and mutation-based fuzzing:
+- Radamsa (if installed), AFL++, or built-in Python mutator
+- Crash collection with input preservation (hex dump)
+- Hang detection and timeout enforcement
+- Seed input mutation for parser/format fuzzing
+
+## Service analysis (service_analyze)
+Network reconnaissance for black-box targets:
+- TCP port scanning with configurable port lists
+- Banner grabbing and service fingerprinting
+- Identify exposed services for targeted fuzzing or CVE lookup
 - Dangerous dynamic execution: eval, exec, subprocess with shell, SQL built by f-strings
 
 ## Dependency scanning (dependency_scan)

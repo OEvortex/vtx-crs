@@ -11,13 +11,17 @@ from vtx.tools.task import TaskTool
 from vtx.tools.web import WebFetchTool, WebSearchTool
 from vtx.tools.write import WriteTool
 
+from .crs.binary_analyzer import BinaryAnalyzerTool
 from .crs.build_runner import BuildRunnerTool
 from .crs.case_manager import CaseManagerTool
 from .crs.dependency_scanner import DependencyScannerTool
+from .crs.dynamic_analyzer import DynamicAnalyzerTool
+from .crs.fuzz_harness import FuzzHarnessTool
 from .crs.patch_apply import PatchApplyTool
 from .crs.repo_analyzer import RepoAnalyzerTool
 from .crs.report_generator import ReportGeneratorTool
 from .crs.security_validator import SecurityValidatorTool
+from .crs.service_analyzer import ServiceAnalyzerTool
 from .crs.test_runner import TestRunnerTool
 from .crs.vuln_scanner import VulnScannerTool
 
@@ -72,15 +76,18 @@ all_tools: list[BaseTool] = [
     SecurityValidatorTool(),
     ReportGeneratorTool(),
     CaseManagerTool(),
+    BinaryAnalyzerTool(),
+    DynamicAnalyzerTool(),
+    FuzzHarnessTool(),
+    ServiceAnalyzerTool(),
 ]
 
-DENIED_TOOLS: set[str] = set()
+DENIED_TOOLS: set[str] = {"edit"}  # edit is disabled for CRS; use patch_apply instead
 
 tools_by_name: dict[str, BaseTool] = {tool.name: tool for tool in all_tools}
 DEFAULT_TOOLS: list[str] = [
     # vtx-coding-agent built-ins (source reading, editing, execution).
     "read",
-    "edit",
     "write",
     "bash",
     "find",
@@ -100,6 +107,10 @@ DEFAULT_TOOLS: list[str] = [
     "security_validate",
     "generate_report",
     "case_manager",
+    "binary_analyze",
+    "dynamic_analyze",
+    "fuzz_target",
+    "service_analyze",
 ]
 
 

@@ -9,7 +9,6 @@ from rich.console import Console
 
 from vtx_crs import config
 
-from . import branding  # noqa: F401  # applies monkey-patches
 from .app import Vtx
 
 _LOGO = [
@@ -79,6 +78,9 @@ def _print_exit_message(
         padding = "  " if info_line else ""
         console.print(f"  [{logo_color}]{logo_line}[/{logo_color}]{padding}{info_line}")
     console.print()
+
+
+from . import branding  # noqa  # applies monkey-patches after _LOGO is defined
 
 
 def run_tui(args: argparse.Namespace) -> None:

@@ -9,6 +9,7 @@ from rich.console import Console
 
 from vtx_crs import config
 
+from . import branding  # noqa: F401  # applies monkey-patches
 from .app import Vtx
 
 _LOGO = [

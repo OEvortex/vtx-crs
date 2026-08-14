@@ -82,7 +82,8 @@ all_tools: list[BaseTool] = [
     ServiceAnalyzerTool(),
 ]
 
-DENIED_TOOLS: set[str] = {"edit"}  # edit is disabled for CRS; use patch_apply instead
+DENIED_TOOLS: set[str] = {"edit", "grep"}
+# edit and grep are disabled for CRS; use patch_apply and find instead
 
 tools_by_name: dict[str, BaseTool] = {tool.name: tool for tool in all_tools}
 DEFAULT_TOOLS: list[str] = [
@@ -91,7 +92,6 @@ DEFAULT_TOOLS: list[str] = [
     "write",
     "bash",
     "find",
-    "grep",
     "skill",
     "fetch_webpage",
     "web_search",

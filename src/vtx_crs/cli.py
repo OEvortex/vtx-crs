@@ -3,9 +3,10 @@ import asyncio
 import os
 import sys
 
-from vtx.llm import PROVIDER_API_BY_NAME
+from vtx.ai.providers import PROVIDER_API_BY_NAME
 
 from vtx_crs import config
+from vtx_crs.tools import register_with_vtx
 from vtx_crs.version import VERSION
 
 
@@ -77,9 +78,6 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--list-agents", action="store_true", help="List all available agents and exit"
     )
-    parser.add_argument(
-        "--goal", default=None, metavar="OBJECTIVE", help="Set a completion goal before the run."
-    )
     parser.add_argument("--version", action="version", version=f"vtx-crs {VERSION}")
     return parser
 
@@ -107,7 +105,7 @@ def main() -> None:
         config.llm.tls.insecure_skip_verify = True
 
     if args.list_agents:
-        from vtx.agents import load_all_agents
+        from vtx.coding_agent.agents import load_all_agents
 
         loaded, errors = load_all_agents(cwd=os.getcwd(), configured=[])
         if not loaded and not errors:
@@ -123,11 +121,8 @@ def main() -> None:
     _resolve_working_directory(args.repo_path)
 
     if args.prompt is not None:
-        from vtx.extensions import load_for_runtime
-        from vtx.headless import run_headless
-
-        # Register the CRS tool surface so headless mode exposes it.
-        from vtx_crs.tools import register_with_vtx
+        from vtx.ai.agent.extensions import load_for_runtime
+        from vtx.coding_agent.headless import run_headless
 
         register_with_vtx()
 
@@ -159,7 +154,6 @@ def main() -> None:
                     openai_compat_auth_mode=args.openai_compat_auth,
                     anthropic_compat_auth_mode=args.anthropic_compat_auth,
                     loaded_extensions=loaded,
-                    goal_objective=args.goal,
                 )
             )
         )

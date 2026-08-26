@@ -2,12 +2,11 @@
 
 from __future__ import annotations
 
-import vtx.ui.chat as _vtx_chat
+import vtx.tui.chat as _vtx_chat
 from rich.text import Text
 from textual.widgets import Label
-from vtx import config
+from vtx.coding_agent.config import config
 
-from vtx_crs.ui import launch as _launch
 from vtx_crs.version import VERSION as _VERSION
 
 # ---------------------------------------------------------------------------
@@ -76,16 +75,3 @@ def _patched_add_session_info(self: _vtx_chat.ChatLog, version: str) -> None:
 
 
 _vtx_chat.ChatLog.add_session_info = _patched_add_session_info  # ty:ignore[invalid-assignment]
-
-# ---------------------------------------------------------------------------
-# Exit logo (launch.py :: _LOGO)
-# ---------------------------------------------------------------------------
-_launch._LOGO = [
-    "██╗   ██╗████████╗██╗  ██╗",
-    "██║   ██║╚══██╔══╝╚██╗██╔╝",
-    "██║   ██║   ██║    ╚███╔╝ ",
-    "╚██╗ ██╔╝   ██║    ██╔██╗ ",
-    " ╚████╔╝    ██║   ██╔╝ ██╗",
-    "  ╚═══╝     ╚═╝   ╚═╝  ╚═╝",
-    " VTX-CRS",
-]

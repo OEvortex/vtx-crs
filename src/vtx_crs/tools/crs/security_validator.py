@@ -9,7 +9,7 @@ from datetime import UTC, datetime
 
 from pydantic import BaseModel
 from vtx.core.types import ToolResult
-from vtx.tools.base import BaseTool
+from vtx.coding_agent.tools import BaseTool
 
 from vtx_crs.core import FindingStatus, VerificationStatus, get_case_manager
 

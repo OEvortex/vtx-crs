@@ -3,11 +3,14 @@
 from __future__ import annotations
 
 import argparse
+import os
 import time
 
 from rich.console import Console
 
 from vtx_crs import config
+from vtx_crs.tools import register_with_vtx
+from vtx_crs.version import VERSION
 
 from .app import Vtx
 
@@ -18,6 +21,7 @@ _LOGO = [
     "╚██╗ ██╔╝   ██║    ██╔██╗ ",
     " ╚████╔╝    ██║   ██╔╝ ██╗",
     "  ╚═══╝     ╚═╝   ╚═╝  ╚═╝",
+    " VTX-CRS",
 ]
 
 
@@ -80,11 +84,10 @@ def _print_exit_message(
     console.print()
 
 
-from . import branding  # noqa  # applies monkey-patches after _LOGO is defined
-
-
 def run_tui(args: argparse.Namespace) -> None:
+    register_with_vtx()
     app = Vtx(
+        cwd=os.getcwd(),
         model=args.model,
         provider=args.provider,
         api_key=args.api_key,
@@ -98,12 +101,10 @@ def run_tui(args: argparse.Namespace) -> None:
         active_agent=getattr(args, "agent", None),
         extra_agent_paths=list(getattr(args, "agent_files", None) or []),
         auto_discover_agents=not getattr(args, "no_agents", False),
-        initial_goal=getattr(args, "goal", None),
     )
     app.run()
 
     # Fire session_end on the extension bus once the TUI is torn down.
-    # Sync emit so we don't have to spin up another event loop.
     if app._loaded_extensions.bus.handler_count("session_end"):
         app._loaded_extensions.bus.emit_sync(
             "session_end", cwd=app._cwd, session_id=app._session.id if app._session else ""

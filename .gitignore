@@ -70,3 +70,4 @@ config.yml
 reports/
 *.md
 !README.md
+.ref-raptor/

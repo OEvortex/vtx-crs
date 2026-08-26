@@ -3,15 +3,25 @@ from vtx.core.types import ToolDefinition
 
 from .crs.binary_analyzer import BinaryAnalyzerTool
 from .crs.build_runner import BuildRunnerTool
+from .crs.call_graph import CallGraphTool
 from .crs.case_manager import CaseManagerTool
+from .crs.coverage_analyzer import CoverageAnalyzerTool
+from .crs.crash_triager import CrashTriagerTool
 from .crs.dependency_scanner import DependencyScannerTool
 from .crs.dynamic_analyzer import DynamicAnalyzerTool
 from .crs.fuzz_harness import FuzzHarnessTool
+from .crs.harness_generator import HarnessGeneratorTool
+from .crs.mitigation_injector import MitigationInjectorTool
 from .crs.patch_apply import PatchApplyTool
+from .crs.patch_validator import PatchValidatorTool
+from .crs.pov_generator import PovGeneratorTool
 from .crs.repo_analyzer import RepoAnalyzerTool
 from .crs.report_generator import ReportGeneratorTool
+from .crs.sast_scanner import SastScannerTool
 from .crs.security_validator import SecurityValidatorTool
 from .crs.service_analyzer import ServiceAnalyzerTool
+from .crs.symbolic_executor import SymbolicExecutorTool
+from .crs.taint_analyzer import TaintAnalyzerTool
 from .crs.test_runner import TestRunnerTool
 from .crs.vuln_scanner import VulnScannerTool
 
@@ -19,7 +29,17 @@ CRS_TOOLS = [
     RepoAnalyzerTool(),
     VulnScannerTool(),
     DependencyScannerTool(),
+    SastScannerTool(),
+    TaintAnalyzerTool(),
+    CallGraphTool(),
+    CoverageAnalyzerTool(),
+    CrashTriagerTool(),
+    HarnessGeneratorTool(),
+    PovGeneratorTool(),
+    SymbolicExecutorTool(),
     PatchApplyTool(),
+    PatchValidatorTool(),
+    MitigationInjectorTool(),
     BuildRunnerTool(),
     TestRunnerTool(),
     SecurityValidatorTool(),
@@ -98,15 +118,25 @@ __all__ = [
     "BaseTool",
     "BinaryAnalyzerTool",
     "BuildRunnerTool",
+    "CallGraphTool",
     "CaseManagerTool",
+    "CoverageAnalyzerTool",
+    "CrashTriagerTool",
     "DependencyScannerTool",
     "DynamicAnalyzerTool",
     "FuzzHarnessTool",
+    "HarnessGeneratorTool",
+    "MitigationInjectorTool",
     "PatchApplyTool",
+    "PatchValidatorTool",
+    "PovGeneratorTool",
     "RepoAnalyzerTool",
     "ReportGeneratorTool",
+    "SastScannerTool",
     "SecurityValidatorTool",
     "ServiceAnalyzerTool",
+    "SymbolicExecutorTool",
+    "TaintAnalyzerTool",
     "TestRunnerTool",
     "VulnScannerTool",
     "get_tool",

@@ -14,7 +14,12 @@ from pathlib import Path
 
 from pydantic import BaseModel
 from vtx.core.types import ToolResult
-from vtx.coding_agent.tools import BaseTool
+try:
+    from vtx.coding_agent.tools import BaseTool  # legacy
+    from vtx.core.types import ToolResult  # legacy
+except (ModuleNotFoundError, ImportError):
+    from vtx.tools import BaseTool  # type: ignore
+    from vtx.core.types import ToolResult  # type: ignore
 
 from vtx_crs.core import get_case_manager
 
@@ -135,13 +140,29 @@ class CallGraphTool(BaseTool[CallGraphParams]):
     @staticmethod
     def _regex_graph(rel: Path, content: str, out: list[str], depth: int) -> int:
         found = 0
-        defs = re.findall(r"(?:function|func|def)\s+([A-Za-z_][A-Za-z0-9_]*)\s*\(", content)
-        calls = re.findall(r"\b([A-Za-z_][A-Za-z0-9_]*)\s*\(", content)
+        defs = re.findall(r"(?:function|func|def|fn|class)\s+([A-Za-z_][A-Za-z0-9_]*)\s*(?:\(|:)", content)
+        # collect calls but filter keywords
+        keywords = {"if", "for", "while", "switch", "return", "import", "include", "catch", "try", "else"}
+        raw_calls = re.findall(r"\b([A-Za-z_][A-Za-z0-9_]*)\s*\(", content)
+        calls = [c for c in raw_calls if c not in keywords and c not in defs]
+        call_freq: dict[str, int] = {}
+        for c in calls:
+            call_freq[c] = call_freq.get(c, 0) + 1
+        top_calls = sorted(call_freq.items(), key=lambda x: -x[1])[: depth * 5]
         if not defs:
             return 0
         out.append(f"## {rel}")
-        for d in defs[:depth * 10]:
+        for d in defs[: depth * 10]:
             out.append(f"- {d}()")
+            # show most frequent callees per file (heuristic edges)
+            for callee, cnt in top_calls[:3]:
+                out.append(f"  -> {callee}() x{cnt}")
             found += 1
+        # also report standalone callees if file has no defs but has calls (e.g., script)
+        if top_calls and not defs:
+            out.append(f"## {rel} (calls)")
+            for callee, cnt in top_calls[:5]:
+                out.append(f"- {callee}() x{cnt}")
+                found += 1
         out.append("")
         return found

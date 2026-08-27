@@ -13,7 +13,12 @@ from pathlib import Path
 
 from pydantic import BaseModel
 from vtx.core.types import ToolResult
-from vtx.coding_agent.tools import BaseTool
+try:
+    from vtx.coding_agent.tools import BaseTool  # legacy
+    from vtx.core.types import ToolResult  # legacy
+except (ModuleNotFoundError, ImportError):
+    from vtx.tools import BaseTool  # type: ignore
+    from vtx.core.types import ToolResult  # type: ignore
 
 from vtx_crs.core import get_case_manager
 
@@ -74,6 +79,8 @@ class TaintAnalyzerTool(BaseTool[TaintAnalyzeParams]):
         flows: list[dict] = []
         seen: set[tuple[str, str, str]] = set()
 
+        # Offensive+Defensive: file-level taint with variable propagation (RAPTOR-style heuristic)
+        # 1) Collect source variables per file, then find sinks reachable via those vars
         for path in iter_source_files(repo, extensions):
             if cancel_event and cancel_event.is_set():
                 break
@@ -87,13 +94,43 @@ class TaintAnalyzerTool(BaseTool[TaintAnalyzeParams]):
             rel = str(path.relative_to(repo))
             lines = content.splitlines()
 
+            # Phase 1: find source lines and tainted variable names
+            tainted_vars: set[str] = set()
+            source_lines: list[tuple[int, str, list[str]]] = []
+            var_assign_re = re.compile(r"\b([A-Za-z_][A-Za-z0-9_]*)\s*=\s*.*(?:request|req\.|input|argv|environ|socket|recv|urllib|requests\.|params|query|body)", re.IGNORECASE)
             for lineno, line in enumerate(lines, 1):
-                sources = [k for k, pat in _SOURCE_PATTERNS.items() if pat.search(line)]
-                sinks = [k for k, pat in _SINK_PATTERNS.items() if pat.search(line)]
-                if not sources or not sinks:
-                    continue
+                srcs = [k for k, pat in _SOURCE_PATTERNS.items() if pat.search(line)]
+                if srcs:
+                    source_lines.append((lineno, line.strip()[:200], srcs))
+                    m = var_assign_re.search(line)
+                    if m:
+                        tainted_vars.add(m.group(1))
+                    # also mark generic taint if source is direct argument
+                    if re.search(r"\b(?:request|argv|input)\b", line, re.IGNORECASE):
+                        tainted_vars.add("input")
+                        tainted_vars.add("data")
+                        tainted_vars.add("user_input")
 
-                key = (rel, ",".join(sorted(sources)), ",".join(sorted(sinks)))
+            # Phase 2: find sink lines reachable via tainted vars or same-file proximity
+            for lineno, line in enumerate(lines, 1):
+                sinks = [k for k, pat in _SINK_PATTERNS.items() if pat.search(line)]
+                if not sinks:
+                    continue
+                # Heuristic: sink is tainted if (a) same line has source, (b) line mentions tainted var, (c) within 15 lines after a source
+                sources_here = [k for k, pat in _SOURCE_PATTERNS.items() if pat.search(line)]
+                near_source = any(abs(lineno - sl) <= 15 for sl, _, _ in source_lines)
+                var_tainted = any(tv in line for tv in tainted_vars) if tainted_vars else False
+                if not (sources_here or var_tainted or near_source):
+                    # Still report high-confidence sinks (eval/exec/pickle) even without propagation — defensive
+                    if not any(s in sinks for s in ("eval_sink", "serialize_sink")):
+                        continue
+                    sources_here = ["unsanitized_input"]
+
+                all_sources = list({*sources_here, *(s for sl, _, s_list in source_lines for s in s_list if abs(lineno - sl) <= 20)})
+                if not all_sources:
+                    all_sources = ["tainted_var"] if var_tainted else ["heuristic"]
+
+                key = (rel, ",".join(sorted(all_sources)), ",".join(sorted(sinks)), str(lineno))
                 if key in seen:
                     continue
                 seen.add(key)
@@ -102,13 +139,15 @@ class TaintAnalyzerTool(BaseTool[TaintAnalyzeParams]):
                     {
                         "file": rel,
                         "line": lineno,
-                        "sources": sources,
+                        "sources": sorted(set(all_sources)),
                         "sinks": sinks,
                         "code": line.strip()[:200],
                     }
                 )
                 if len(flows) >= max_findings:
                     break
+            if len(flows) >= max_findings:
+                break
 
         if not flows:
             return ToolResult(

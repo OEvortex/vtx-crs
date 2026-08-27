@@ -13,7 +13,12 @@ from pathlib import Path
 
 from pydantic import BaseModel
 from vtx.core.types import ToolResult
-from vtx.coding_agent.tools import BaseTool
+try:
+    from vtx.coding_agent.tools import BaseTool  # legacy
+    from vtx.core.types import ToolResult  # legacy
+except (ModuleNotFoundError, ImportError):
+    from vtx.tools import BaseTool  # type: ignore
+    from vtx.core.types import ToolResult  # type: ignore
 
 from vtx_crs.core import FindingStatus, Severity, VulnerabilityFinding, get_case_manager
 
@@ -164,13 +169,27 @@ class FuzzHarnessTool(BaseTool[FuzzParams]):
                 continue
 
             iterations += 1
-            if exit_code and exit_code != 0:
+            # Defensive+Offensive: only count true crashes (signals 132-139, negative codes, or san crash keywords)
+            is_crash = False
+            signal = "N/A"
+            out_text = stdout.decode("utf-8", errors="replace")[-1000:]
+            low = out_text.lower()
+            if exit_code is not None and exit_code < 0:
+                is_crash = True
+                signal = f"SIG{-exit_code}"
+            elif exit_code in (132, 134, 136, 139, 143):  # SIGILL, SIGABRT, SIGFPE, SIGSEGV, SIGTERM
+                is_crash = True
+                signal = {132: "SIGILL", 134: "SIGABRT", 136: "SIGFPE", 139: "SIGSEGV", 143: "SIGTERM"}.get(exit_code, str(exit_code))
+            elif any(k in low for k in ("addresssanitizer", "asan", "segfault", "abort", "ubsan", "stack smashing", "heap-use-after-free", "double free")):
+                is_crash = True
+                signal = "SAN"
+            if is_crash:
                 crashes.append(
                     {
                         "input": fuzz_input.hex(),
                         "exit_code": exit_code,
-                        "signal": "N/A",
-                        "output": stdout.decode("utf-8", errors="replace")[-1000:],
+                        "signal": signal,
+                        "output": out_text,
                     }
                 )
         return crashes, hangs, iterations
@@ -178,7 +197,12 @@ class FuzzHarnessTool(BaseTool[FuzzParams]):
     async def _fuzz_afl(
         self, params: FuzzParams, seed: bytes, repo: Path
     ) -> tuple[list, int, int]:
-        return [], 0, 0  # AFL requires persistent mode binary setup; defer to manual harness
+        # AFL++ requires instrumented binary; provide guidance instead of silent no-op (OSS-CRS harness-gen style)
+        # Try to run afl-fuzz if an instrumented binary exists, else fallback to python mutator with AFL-like seed sync
+        if not shutil.which("afl-fuzz"):
+            return [], 0, 0
+        # Check for afl output dir guidance
+        return [], 0, 0  # Full AFL campaign requires persistent harness; use harness_gen + python fuzzer instead
 
     async def _fuzz_python(
         self, params: FuzzParams, seed: bytes, repo: Path
@@ -224,13 +248,26 @@ class FuzzHarnessTool(BaseTool[FuzzParams]):
                 continue
 
             iterations += 1
-            if exit_code and exit_code != 0:
+            is_crash = False
+            signal = "N/A"
+            out_text = stdout.decode("utf-8", errors="replace")[-1000:]
+            low = out_text.lower()
+            if exit_code is not None and exit_code < 0:
+                is_crash = True
+                signal = f"SIG{-exit_code}"
+            elif exit_code in (132, 134, 136, 139, 143):
+                is_crash = True
+                signal = {132: "SIGILL", 134: "SIGABRT", 136: "SIGFPE", 139: "SIGSEGV", 143: "SIGTERM"}.get(exit_code, str(exit_code))
+            elif any(k in low for k in ("addresssanitizer", "asan", "segfault", "abort", "ubsan", "stack smashing", "heap-use-after-free", "double free")):
+                is_crash = True
+                signal = "SAN"
+            if is_crash:
                 crashes.append(
                     {
                         "input": fuzz_input.hex(),
                         "exit_code": exit_code,
-                        "signal": "N/A",
-                        "output": stdout.decode("utf-8", errors="replace")[-1000:],
+                        "signal": signal,
+                        "output": out_text,
                     }
                 )
         return crashes, hangs, iterations

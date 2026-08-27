@@ -13,7 +13,12 @@ from typing import Any
 
 from pydantic import BaseModel
 from vtx.core.types import ToolResult
-from vtx.coding_agent.tools import BaseTool
+try:
+    from vtx.coding_agent.tools import BaseTool  # legacy
+    from vtx.core.types import ToolResult  # legacy
+except (ModuleNotFoundError, ImportError):
+    from vtx.tools import BaseTool  # type: ignore
+    from vtx.core.types import ToolResult  # type: ignore
 
 from vtx_crs.core import get_case_manager
 
@@ -23,6 +28,7 @@ _case_manager = get_case_manager()
 
 
 class SymbolicExecuteParams(BaseModel):
+    repo_path: str = ""
     target: str = ""
     input_file: str = ""
     max_states: int = 100
@@ -155,8 +161,25 @@ class SymbolicExecutorTool(BaseTool[SymbolicExecuteParams]):
         if not base:
             base = b"A"
         out: list[bytes] = [base]
+        # Offensive strategy: bit-flip, boundary, arithmetic, dictionary (inspired by RAPTOR fuzz mutators)
+        boundary_vals = [b"\x00", b"\xff", b"\x7f", b"\x80", b"A" * 8, b"%s%p%x%d", b"../" * 4, b"'; DROP TABLE --", b"<script>alert(1)</script>"]
         for i in range(1, count):
-            mutated = bytearray(base)
-            mutated[i % len(mutated)] = (mutated[i % len(mutated)] + 1) % 256
+            idx = i % len(base if base else 1)
+            strategy = i % 5
+            mutated = bytearray(base if base else b"A")
+            if strategy == 0:  # byte increment
+                mutated[idx] = (mutated[idx] + 1) % 256
+            elif strategy == 1:  # bit flip
+                mutated[idx] ^= 1 << (i % 8)
+            elif strategy == 2:  # boundary injection
+                bv = boundary_vals[i % len(boundary_vals)]
+                mutated = bytearray(bv[: len(mutated)] if len(bv) >= len(mutated) else bv + bytes(mutated[len(bv):]))
+            elif strategy == 3:  # truncation / extension
+                if i % 2 == 0 and len(mutated) > 1:
+                    mutated = mutated[:-1]
+                else:
+                    mutated.extend(b"\x00")
+            else:  # arithmetic
+                mutated[idx] = (mutated[idx] + (i * 7)) % 256
             out.append(bytes(mutated))
         return out

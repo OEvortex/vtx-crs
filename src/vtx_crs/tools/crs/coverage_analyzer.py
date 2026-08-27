@@ -14,7 +14,12 @@ from pathlib import Path
 
 from pydantic import BaseModel
 from vtx.core.types import ToolResult
-from vtx.coding_agent.tools import BaseTool
+try:
+    from vtx.coding_agent.tools import BaseTool  # legacy
+    from vtx.core.types import ToolResult  # legacy
+except (ModuleNotFoundError, ImportError):
+    from vtx.tools import BaseTool  # type: ignore
+    from vtx.core.types import ToolResult  # type: ignore
 
 from vtx_crs.core import get_case_manager
 
@@ -57,9 +62,33 @@ class CoverageAnalyzerTool(BaseTool[CoverageAnalyzeParams]):
                 ui_details="",
             )
 
-        cov_path = Path(params.coverage_file) if params.coverage_file else repo / ".coverage"
-        if cov_path.exists():
-            return self._parse_existing_coverage(repo, cov_path, params.include_exts)
+        # Try multiple candidate paths (defensive: handle .coverage binary, lcov, cobertura, json)
+        candidates: list[Path] = []
+        if params.coverage_file:
+            candidates.append(Path(params.coverage_file))
+        else:
+            candidates.extend([
+                repo / "coverage.json",
+                repo / "coverage.out",
+                repo / "coverage.xml",
+                repo / "lcov.info",
+                repo / ".coverage.json",
+                repo / "htmlcov" / "index.html",
+                repo / ".coverage",  # last: binary pickle is unparseable but try
+            ])
+        for cp in candidates:
+            if cp.exists() and cp.is_file():
+                # Skip binary pickle unless no alternative
+                if cp.name == ".coverage" and any(c.exists() for c in candidates if c.name != ".coverage"):
+                    continue
+                try:
+                    # Quick binary check
+                    head = cp.read_bytes()[:4]
+                    if head.startswith(b"\x00") or head.startswith(b"\x80"):  # pickle
+                        continue
+                except OSError:
+                    continue
+                return self._parse_existing_coverage(repo, cp, params.include_exts)
 
         return self._suggest_coverage_setup(repo, params.test_command)
 
@@ -76,18 +105,41 @@ class CoverageAnalyzerTool(BaseTool[CoverageAnalyzeParams]):
         try:
             if cov_path.suffix == ".json":
                 data = json.loads(cov_path.read_text(encoding="utf-8", errors="ignore"))
-                for file_path, info in data.get("files", {}).items():
-                    summary.append(f"{file_path}: {info.get('summary', {})}")
-                    missing = info.get("missing_lines", info.get("missing_branches", []))
-                    if missing:
-                        gaps.append((file_path, "lines", len(missing)))
+                # support both pytest-cov {files:{}} and coverage.py {files:[]}
+                files = data.get("files", {})
+                if isinstance(files, dict):
+                    for file_path, info in files.items():
+                        summary.append(f"{file_path}: {info.get('summary', {})}")
+                        missing = info.get("missing_lines", info.get("missing_branches", []))
+                        if missing:
+                            gaps.append((file_path, "lines", len(missing)))
+                elif isinstance(files, list):
+                    for info in files:
+                        fp = info.get("filename", "unknown")
+                        missing = info.get("missing_lines", [])
+                        if missing:
+                            gaps.append((fp, "lines", len(missing)))
+            elif cov_path.suffix == ".xml":
+                # Cobertura XML
+                text = cov_path.read_text(encoding="utf-8", errors="ignore")
+                for m in re.finditer(r'class\s+filename="([^"]+)"[^>]*line-rate="([0-9.]+)"', text):
+                    rate = float(m.group(2))
+                    if rate < 1.0:
+                        gaps.append((m.group(1), "lines", int((1 - rate) * 100)))
             else:
                 text = cov_path.read_text(encoding="utf-8", errors="ignore")
+                # term-missing text
                 for m in re.finditer(
                     r"(?P<path>\S+)\s+(?P<pct>\d+)%\s+(?P<miss>\d+)",
                     text,
                 ):
                     gaps.append((m.group("path"), "lines", int(m.group("miss"))))
+                # lcov / go cover
+                if not gaps:
+                    for m in re.finditer(r"SF:(.+)", text):
+                        gaps.append((m.group(1).strip(), "lines", 1))
+                    for m in re.finditer(r"(.+):\d+\.\d+,\d+\.\d+\s+1\s+0", text):
+                        gaps.append((m.group(1).strip(), "lines", 1))
         except (OSError, json.JSONDecodeError):
             return ToolResult(
                 success=True,

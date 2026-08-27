@@ -14,7 +14,12 @@ from pathlib import Path
 
 from pydantic import BaseModel
 from vtx.core.types import ToolResult
-from vtx.coding_agent.tools import BaseTool
+try:
+    from vtx.coding_agent.tools import BaseTool  # legacy
+    from vtx.core.types import ToolResult  # legacy
+except (ModuleNotFoundError, ImportError):
+    from vtx.tools import BaseTool  # type: ignore
+    from vtx.core.types import ToolResult  # type: ignore
 
 from vtx_crs.core import Severity, get_case_manager
 
@@ -59,6 +64,42 @@ _STRUCTURAL_RULES = [
         "description": "A command execution API is called. If the command string includes user-controlled data, this is a command injection sink.",
         "remediation": "Use argument lists, avoid shell=True, sanitize/allowlist inputs.",
         "confidence": 0.5,
+    },
+    {
+        "name": "hardcoded_secret",
+        "cwe": "CWE-798",
+        "severity": "high",
+        "pattern": r"(?:password|secret|api[_-]?key)\s*[:=]\s*[\"'][^\"']{6,}[\"']",
+        "description": "Hardcoded secret/password/API key. Rotate immediately and use env/secret manager.",
+        "remediation": "Move to environment variable or secrets manager; rotate credential.",
+        "confidence": 0.7,
+    },
+    {
+        "name": "weak_crypto",
+        "cwe": "CWE-327",
+        "severity": "medium",
+        "pattern": r"(?:md5\(|sha1\(|DES\.|RC4|Blowfish|random\.random\(|Math\.random\()",
+        "description": "Weak crypto / PRNG detected (MD5/SHA1/DES/RC4/Math.random). Use SHA-256+ and CSPRNG.",
+        "remediation": "Use hashlib.sha256, secrets module, or approved crypto library.",
+        "confidence": 0.6,
+    },
+    {
+        "name": "ssrf_sink",
+        "cwe": "CWE-918",
+        "severity": "high",
+        "pattern": r"(?:requests\.(?:get|post)\(|urllib\.request\.urlopen|fetch\(|http\.request\()",
+        "description": "Server-side request to user-controlled URL (SSRF risk). Validate allowlist.",
+        "remediation": "Allowlist destinations, block private IPs, require auth.",
+        "confidence": 0.4,
+    },
+    {
+        "name": "open_redirect",
+        "cwe": "CWE-601",
+        "severity": "medium",
+        "pattern": r"(?:redirect\(|location\.href\s*=|window\.location)",
+        "description": "Potential open redirect with user-controlled destination.",
+        "remediation": "Validate redirect target against allowlist.",
+        "confidence": 0.4,
     },
 ]
 

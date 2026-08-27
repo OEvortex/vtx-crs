@@ -3,9 +3,17 @@ import asyncio
 import os
 import sys
 
-from vtx.ai.providers import PROVIDER_API_BY_NAME
-
-from vtx_crs import config
+try:
+    from vtx.ai.providers import PROVIDER_API_BY_NAME  # legacy
+    from vtx.coding_agent.config import config  # legacy
+except (ModuleNotFoundError, ImportError):
+    import vtx_crs._compat  # noqa: F401
+    from vtx.llm.providers import PROVIDER_API_BY_NAME  # type: ignore
+    try:
+        from vtx.config import get_config
+        config = get_config()  # type: ignore
+    except Exception:
+        from vtx_crs.config import config  # type: ignore
 from vtx_crs.tools import register_with_vtx
 from vtx_crs.version import VERSION
 
@@ -105,7 +113,10 @@ def main() -> None:
         config.llm.tls.insecure_skip_verify = True
 
     if args.list_agents:
-        from vtx.coding_agent.agents import load_all_agents
+        try:
+            from vtx.coding_agent.agents import load_all_agents  # legacy
+        except (ModuleNotFoundError, ImportError):
+            from vtx.agents import load_all_agents  # type: ignore
 
         loaded, errors = load_all_agents(cwd=os.getcwd(), configured=[])
         if not loaded and not errors:
@@ -121,8 +132,12 @@ def main() -> None:
     _resolve_working_directory(args.repo_path)
 
     if args.prompt is not None:
-        from vtx.ai.agent.extensions import load_for_runtime
-        from vtx.coding_agent.headless import run_headless
+        try:
+            from vtx.ai.agent.extensions import load_for_runtime  # legacy
+            from vtx.coding_agent.headless import run_headless  # legacy
+        except (ModuleNotFoundError, ImportError):
+            from vtx.extensions import load_for_runtime  # type: ignore
+            from vtx.headless import run_headless  # type: ignore
 
         register_with_vtx()
 

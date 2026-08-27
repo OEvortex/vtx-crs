@@ -9,7 +9,12 @@ from typing import ClassVar
 
 from pydantic import BaseModel
 from vtx.core.types import ToolResult
-from vtx.coding_agent.tools import BaseTool
+try:
+    from vtx.coding_agent.tools import BaseTool  # legacy
+    from vtx.core.types import ToolResult  # legacy
+except (ModuleNotFoundError, ImportError):
+    from vtx.tools import BaseTool  # type: ignore
+    from vtx.core.types import ToolResult  # type: ignore
 
 from vtx_crs.core import get_case_manager
 
@@ -49,7 +54,17 @@ class ServiceAnalyzerTool(BaseTool[ServiceAnalyzeParams]):
         target = params.target.strip()
         if not target:
             repo = resolve_repo_path(params.repo_path, _case_manager.active_case.repo_path)
-            target = repo.name if repo.exists() else "localhost"
+            # Defensive: require explicit target; don't scan repo.name as host (RAPTOR safeguards)
+            if not repo.exists():
+                return ToolResult(
+                    success=False,
+                    result="No target specified. Provide target host/IP or a valid repo_path.",
+                    ui_summary="Missing target",
+                    ui_details="",
+                )
+            # If repo has no target, default to localhost for local service discovery
+            target = "127.0.0.1"
+        mode = params.mode.lower().strip()  # connect | banner | identify
 
         port_list = []
         for p in params.ports.split(","):
@@ -74,9 +89,18 @@ class ServiceAnalyzerTool(BaseTool[ServiceAnalyzeParams]):
                     asyncio.open_connection(target, port), timeout=params.timeout_seconds
                 )
                 open_ports.append(port)
-                banner = await self._grab_banner(reader, writer, port)
-                if banner:
-                    banners[port] = banner
+                if mode in ("banner", "identify"):
+                    banner = await self._grab_banner(reader, writer, port, mode)
+                    if banner:
+                        banners[port] = banner
+                elif mode == "connect":
+                    # still try banner for connect but don't require it
+                    try:
+                        b = await asyncio.wait_for(reader.read(256), timeout=1)
+                        if b:
+                            banners[port] = b.decode("utf-8", errors="replace").strip()[:100]
+                    except Exception:
+                        pass
                 writer.close()
                 with contextlib.suppress(Exception):
                     await writer.wait_closed()
@@ -106,23 +130,47 @@ class ServiceAnalyzerTool(BaseTool[ServiceAnalyzeParams]):
             for port, banner in sorted(banners.items()):
                 sections.append(f"- {port}/tcp: {banner[:200]}")
 
+        # Success semantics: scan succeeded regardless of open count (defensive vs offensive)
         text = "\n".join(sections)
         return ToolResult(
-            success=len(open_ports) > 0,
+            success=True,
             result=text,
-            ui_summary=f"Found {len(open_ports)} open port(s) on {target}",
+            ui_summary=f"Scanned {len(port_list)} ports — {len(open_ports)} open on {target}",
             ui_details=text,
         )
 
     async def _grab_banner(
-        self, reader: asyncio.StreamReader, writer: asyncio.StreamWriter, port: int
+        self, reader: asyncio.StreamReader, writer: asyncio.StreamWriter, port: int, mode: str = "banner"
     ) -> str:
         banner = ""
         try:
-            writer.write(b"\r\n")
-            await asyncio.wait_for(writer.drain(), timeout=2)
+            # Service-specific probes (offensive+defensive fingerprinting)
+            probe = b"\r\n"
+            if port in (80, 8080, 8000, 8443):
+                probe = b"HEAD / HTTP/1.0\r\nHost: localhost\r\n\r\n"
+            elif port in (22,):
+                # SSH banner is server-initiated; just read
+                probe = b""
+            elif port in (21,):
+                probe = b""
+            elif port in (25, 587):
+                probe = b"EHLO localhost\r\n"
+            if probe:
+                writer.write(probe)
+                await asyncio.wait_for(writer.drain(), timeout=2)
             data = await asyncio.wait_for(reader.read(1024), timeout=2)
             banner = data.decode("utf-8", errors="replace").strip()
+            if mode == "identify" and banner:
+                # Light fingerprint
+                low = banner.lower()
+                if "ssh" in low:
+                    banner = f"SSH: {banner[:80]}"
+                elif "http" in low:
+                    banner = f"HTTP: {banner[:80]}"
+                elif "smtp" in low:
+                    banner = f"SMTP: {banner[:80]}"
+                elif "ftp" in low:
+                    banner = f"FTP: {banner[:80]}"
         except Exception:
             pass
         return banner

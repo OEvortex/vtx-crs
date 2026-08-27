@@ -12,7 +12,12 @@ from pathlib import Path
 
 from pydantic import BaseModel
 from vtx.core.types import ToolResult
-from vtx.coding_agent.tools import BaseTool
+try:
+    from vtx.coding_agent.tools import BaseTool  # legacy
+    from vtx.core.types import ToolResult  # legacy
+except (ModuleNotFoundError, ImportError):
+    from vtx.tools import BaseTool  # type: ignore
+    from vtx.core.types import ToolResult  # type: ignore
 
 from vtx_crs.core import get_case_manager
 
@@ -69,8 +74,17 @@ class PatchValidatorTool(BaseTool[PatchValidateParams]):
         with tempfile.TemporaryDirectory(prefix="vtx_crs_patch_") as tmp:
             work = Path(tmp)
             self._copy_tree(repo, work)
-            apply_result = PatchApplyTool().execute(
-                PatchApplyParams(repo_path=str(work), patch_file=str(patch_path)),
+            try:
+                diff_text = patch_path.read_text(encoding="utf-8", errors="ignore")
+            except OSError as exc:
+                return ToolResult(
+                    success=False,
+                    result=f"Failed to read patch file: {exc}",
+                    ui_summary="Patch read failed",
+                    ui_details="",
+                )
+            apply_result = await PatchApplyTool().execute(
+                PatchApplyParams(diff=diff_text, repo_path=str(work)),
                 cancel_event=cancel_event,
             )
             if not apply_result.success:
@@ -114,15 +128,28 @@ class PatchValidatorTool(BaseTool[PatchValidateParams]):
 
     @staticmethod
     def _copy_tree(src: Path, dst: Path) -> None:
+        import shutil
+
         dst.mkdir(parents=True, exist_ok=True)
         for child in src.iterdir():
-            if child.name == ".venv" or child.name == "__pycache__":
+            if child.name in (".venv", "__pycache__", ".git", ".hg", "node_modules", ".pytest_cache", ".ruff_cache", ".vtx", ".vtx_crs"):
                 continue
             target = dst / child.name
-            if child.is_dir():
-                PatchValidatorTool._copy_tree(child, target)
-            else:
-                target.write_bytes(child.read_bytes())
+            try:
+                if child.is_symlink():
+                    # Preserve symlink
+                    target.symlink_to(child.readlink())
+                elif child.is_dir():
+                    shutil.copytree(child, target, symlinks=True, ignore=shutil.ignore_patterns(".venv", "__pycache__", ".git"))
+                else:
+                    shutil.copy2(child, target)
+            except OSError:
+                # Fallback to bytes copy
+                try:
+                    if child.is_file():
+                        target.write_bytes(child.read_bytes())
+                except OSError:
+                    continue
 
     @staticmethod
     async def _run_command(repo: Path, command: str, cancel_event: asyncio.Event | None) -> tuple[bool, str]:

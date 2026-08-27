@@ -8,7 +8,15 @@ import time
 
 from rich.console import Console
 
-from vtx_crs import config
+try:
+    from vtx.coding_agent.config import config  # legacy
+except (ModuleNotFoundError, ImportError):
+    import vtx_crs._compat  # noqa: F401
+    try:
+        from vtx.config import get_config
+        config = get_config()  # type: ignore
+    except Exception:
+        from vtx_crs.config import config  # type: ignore
 from vtx_crs.tools import register_with_vtx
 from vtx_crs.version import VERSION
 

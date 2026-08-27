@@ -20,7 +20,8 @@ description = "Autonomous Cyber Reasoning System (CRS) built on vtx-coding-agent
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
-    "vtx-coding-agent"
+    "anthropic>=0.120.2",
+    "vtx-coding-agent",
 ]
 
 [dependency-groups]

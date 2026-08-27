@@ -1,5 +1,21 @@
-from vtx.coding_agent.prompts.builder import build_system_prompt as _vtx_build_system_prompt
-from vtx.coding_agent.config import config as crs_config
+try:
+    from vtx.coding_agent.prompts.builder import build_system_prompt as _vtx_build_system_prompt  # legacy
+    from vtx.coding_agent.config import config as crs_config  # legacy
+except (ModuleNotFoundError, ImportError):
+    import vtx_crs._compat  # ensure aliases
+    try:
+        from vtx.prompts.builder import build_system_prompt as _vtx_build_system_prompt  # type: ignore
+    except ImportError:
+        # fallback: simple builder
+        def _vtx_build_system_prompt(cwd, context=None, tools=None, base_content=None, include_git_context=None, extra_instructions=None, extra_instructions_mode="append", skills=None):  # type: ignore
+            return base_content or ""
+    try:
+        from vtx.config import get_config as _get_cfg
+        crs_config = _get_cfg()
+    except Exception:
+        class _Dummy:
+            llm = type("obj", (), {"system_prompt": type("obj", (), {"git_context": False})()})()
+        crs_config = _Dummy()  # type: ignore
 
 from ..tools import BaseTool
 from .identity import DEFAULT_CRS_BASE

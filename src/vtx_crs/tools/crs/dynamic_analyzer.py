@@ -12,7 +12,12 @@ from pathlib import Path
 
 from pydantic import BaseModel
 from vtx.core.types import ToolResult
-from vtx.coding_agent.tools import BaseTool
+try:
+    from vtx.coding_agent.tools import BaseTool  # legacy
+    from vtx.core.types import ToolResult  # legacy
+except (ModuleNotFoundError, ImportError):
+    from vtx.tools import BaseTool  # type: ignore
+    from vtx.core.types import ToolResult  # type: ignore
 
 from vtx_crs.core import FindingStatus, Severity, VulnerabilityFinding, get_case_manager
 
@@ -64,12 +69,19 @@ class DynamicAnalyzerTool(BaseTool[DynamicAnalyzeParams]):
         env.update({k: str(v) for k, v in params.env.items()})
 
         cmd = params.command
-        strace_path = Path("/tmp/strace.out")
+        import tempfile
+
+        tmp_strace = tempfile.NamedTemporaryFile(prefix="vtx_strace_", suffix=".out", delete=False)
+        strace_path = Path(tmp_strace.name)
+        tmp_strace.close()
         strace_cmd = None
-        if params.strace and shutil.which("strace"):
+        use_strace = params.strace and shutil.which("strace")
+        use_ltrace = params.ltrace and shutil.which("ltrace")
+        if use_ltrace and not use_strace:
+            # ltrace direct
+            strace_cmd = ["ltrace", "-f", "-tt", "-o", str(strace_path), "sh", "-c", cmd]
+        elif use_strace:
             strace_flags = ["-f", "-tt", "-T", "-o", str(strace_path)]
-            if params.ltrace:
-                strace_flags.extend(["-l"])
             strace_cmd = ["strace", *strace_flags, "sh", "-c", cmd]
         else:
             strace_cmd = ["sh", "-c", cmd]
@@ -156,12 +168,16 @@ class DynamicAnalyzerTool(BaseTool[DynamicAnalyzeParams]):
 
     def _summarize_trace(self, trace_text: str) -> str:
         lines = trace_text.splitlines()
-        syscalls = {}
+        syscalls: dict[str, int] = {}
         errors = 0
+        # Handle strace -tt prefix: "12345 12:34:56.123456 syscall(args) = ret" and ltrace similarly
         for line in lines:
-            m = re.match(r"\w+\(([^)]+)\)\s*=\s*([-\d]+|\?)", line)
+            # strip pid + timestamp prefix
+            stripped = re.sub(r"^\s*\d+\s+\d+:\d+:\d+\.\d+\s+", "", line)
+            stripped = re.sub(r"^\s*\d+\s+", "", stripped)
+            m = re.match(r"(\w+)\s*\(.*\)\s*=\s*([-\d]+|\?|0x[0-9a-fA-F]+)", stripped)
             if m:
-                syscall = line.split("(")[0].strip()
+                syscall = m.group(1)
                 syscalls[syscall] = syscalls.get(syscall, 0) + 1
                 ret = m.group(2)
                 if ret == "-1" or ret == "?":
@@ -169,6 +185,11 @@ class DynamicAnalyzerTool(BaseTool[DynamicAnalyzeParams]):
         top = sorted(syscalls.items(), key=lambda x: -x[1])[:15]
         parts = [f"- {name}: {count} call(s)" for name, count in top]
         parts.append(f"- Errors: {errors}")
+        # Highlight dangerous syscalls (offensive+defensive)
+        dangerous = {"execve", "mprotect", "mmap", "socket", "connect", "ptrace", "chmod", "openat"}
+        hits = [k for k in syscalls if k in dangerous]
+        if hits:
+            parts.append(f"- Dangerous: {', '.join(sorted(hits))}")
         return "\n".join(parts) if parts else "(no syscalls parsed)"
 
 

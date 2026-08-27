@@ -10,7 +10,12 @@ from typing import Any
 
 from pydantic import BaseModel
 from vtx.core.types import ToolResult
-from vtx.coding_agent.tools import BaseTool
+try:
+    from vtx.coding_agent.tools import BaseTool  # legacy
+    from vtx.core.types import ToolResult  # legacy
+except (ModuleNotFoundError, ImportError):
+    from vtx.tools import BaseTool  # type: ignore
+    from vtx.core.types import ToolResult  # type: ignore
 
 from vtx_crs.core import get_case_manager
 
@@ -43,7 +48,14 @@ class BinaryAnalyzerTool(BaseTool[BinaryAnalyzeParams]):
     async def execute(
         self, params: BinaryAnalyzeParams, cancel_event: asyncio.Event | None = None
     ) -> ToolResult:
-        target = resolve_repo_path(params.path, params.repo_path)
+        # Defensive: params.path is the binary file; repo_path is cwd hint. Don't use resolve_repo_path which expects repo semantics.
+        if params.path:
+            target = Path(params.path)
+            if not target.is_absolute():
+                base = Path(params.repo_path) if params.repo_path else Path(_case_manager.active_case.repo_path) if _case_manager.active_case.repo_path else Path.cwd()
+                target = (base / target).resolve() if base.exists() else target.resolve()
+        else:
+            target = resolve_repo_path(params.repo_path, _case_manager.active_case.repo_path)
         if not target.exists() or not target.is_file():
             return ToolResult(
                 success=False,
@@ -187,11 +199,19 @@ class BinaryAnalyzerTool(BaseTool[BinaryAnalyzeParams]):
                 result = subprocess.run(
                     ["file", str(path)], capture_output=True, text=True, timeout=10
                 )
-                m = re.search(r"(x86-64|x86_64|i386|arm|aarch64|mips|ppc)", result.stdout, re.I)
-                return m.group(1) if m else None
+                m = re.search(r"(x86-64|x86_64|i386|arm|aarch64|mips|ppc|riscv)", result.stdout, re.I)
+                return m.group(1) if m else result.stdout.strip()[:80]
         except Exception:
             pass
         return None
+
+    async def _run_cmd(self, cmd: list[str], timeout: int = 10) -> str:
+        """Non-blocking wrapper for subprocess (fix: don't block event loop)."""
+        try:
+            proc = await asyncio.to_thread(subprocess.run, cmd, capture_output=True, text=True, timeout=timeout)
+            return proc.stdout or ""
+        except Exception:
+            return ""
 
     def _check_hardening(self, path: Path, file_type: str) -> dict[str, Any]:
         result: dict[str, Any] = {
@@ -207,25 +227,46 @@ class BinaryAnalyzerTool(BaseTool[BinaryAnalyzeParams]):
                 ["readelf", "-W", "-l", str(path)], capture_output=True, text=True, timeout=10
             ).stdout
             if "GNU_STACK" in out:
-                m = re.search(r"GNU_STACK.*\s([RWE]+)\s", out)
-                if m and "E" not in m.group(1):
-                    result["nx"] = "enabled"
-                else:
+                # RAPTOR-style: check RWE flags accurately
+                m = re.search(r"GNU_STACK[^\\n]*\s([RWE ]+)\s*$", out, re.M)
+                flags = m.group(1) if m else ""
+                if "E" in flags:
                     result["nx"] = "disabled"
                     result["nx_disabled"] = True
+                elif "RWE" in out or "RW" in flags:
+                    result["nx"] = "enabled"
+                else:
+                    result["nx"] = "enabled"
+            # RELRO: check for BIND_NOW as full RELRO (oss-crs style)
             if "GNU_RELRO" in out:
-                result["relro"] = "partial" if out.count("GNU_RELRO") > 1 else "full"
+                if "BIND_NOW" in out or "FLAGS_1" in out:
+                    result["relro"] = "full"
+                else:
+                    result["relro"] = "partial"
             else:
                 result["relro"] = "none"
             out2 = subprocess.run(
                 ["readelf", "-W", "-s", str(path)], capture_output=True, text=True, timeout=10
             ).stdout
+            out_dyn = subprocess.run(
+                ["readelf", "-W", "-d", str(path)], capture_output=True, text=True, timeout=10
+            ).stdout
             if "__stack_chk_fail" in out2 or "__stack_chk_guard" in out2:
                 result["canary"] = "enabled"
             else:
                 result["canary"] = "none"
-            if re.search(r"Type:\s*EXEC", out):
+            # PIE: EXEC = no PIE, DYN with PIE flag; also check file header via readelf -h
+            hdr = subprocess.run(["readelf", "-h", str(path)], capture_output=True, text=True, timeout=10).stdout
+            if re.search(r"Type:\s*EXEC", hdr):
                 result["pie"] = "disabled"
+                result["pie_disabled"] = True
+            elif re.search(r"Type:\s*DYN", hdr):
+                # DYN could be PIE or shared lib; check for DF_1_PIE
+                if "PIE" in hdr or "DF_1_PIE" in out_dyn or "FLAGS_1" in out_dyn:
+                    result["pie"] = "enabled"
+                else:
+                    # Shared library — not PIE in executable sense
+                    result["pie"] = "shared"
             else:
                 result["pie"] = "enabled"
         except Exception:

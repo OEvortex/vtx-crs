@@ -8,16 +8,27 @@ CRS case for the final report.
 from __future__ import annotations
 
 import asyncio
+import json
 import re
+import shutil
+import subprocess
 from pathlib import Path
 
 from pydantic import BaseModel
 from vtx.core.types import ToolResult
-from vtx.coding_agent.tools import BaseTool
+try:
+    from vtx.coding_agent.tools import BaseTool  # legacy
+    from vtx.core.types import ToolResult  # legacy
+except (ModuleNotFoundError, ImportError):
+    from vtx.tools import BaseTool  # type: ignore
+    from vtx.core.types import ToolResult  # type: ignore
 
 from vtx_crs.core import FindingStatus, Severity, VulnerabilityFinding, get_case_manager
 
 from ._common import MAX_FILE_BYTES, iter_source_files, resolve_repo_path
+
+# Free open-source engines — no keys, best-effort if installed
+_EXTERNAL_ENGINES = ("semgrep", "bandit", "gitleaks")
 
 _case_manager = get_case_manager()
 
@@ -276,6 +287,8 @@ class VulnScanParams(BaseModel):
     min_severity: str = "info"  # info | low | medium | high | critical
     include_exts: list[str] = []
     save_findings: bool = True
+    use_external_engines: bool = True  # semgrep/bandit/gitleaks if installed (free, open-source)
+    external_timeout: int = 60
 
 
 class VulnScannerTool(BaseTool[VulnScanParams]):
@@ -309,12 +322,31 @@ class VulnScannerTool(BaseTool[VulnScanParams]):
         min_sev = Severity.from_str(params.min_severity)
         extensions = set(params.include_exts) or DEFAULT_SCAN_EXTENSIONS
 
+        # 1) Built-in pattern scan (always, no deps)
         findings = self._scan_patterns(repo, extensions, min_sev, cancel_event)
+        pattern_count = len(findings)
+        engine_counts: dict[str, int] = {}
+
+        # 2) Free open-source engines (semgrep / bandit / gitleaks) — best-effort, no key
+        if params.use_external_engines:
+            try:
+                ext_findings = await self._run_external_engines(repo, min_sev, params.external_timeout, cancel_event)
+                # merge dedup by (file, line, rule)
+                seen = {(f.file_path, f.line_start, f.metadata.get("pattern") or f.title) for f in findings}
+                for ef in ext_findings:
+                    key = (ef.file_path, ef.line_start, ef.metadata.get("pattern") or ef.title)
+                    if key not in seen:
+                        findings.append(ef)
+                        seen.add(key)
+                        eng = ef.metadata.get("engine", "external")
+                        engine_counts[eng] = engine_counts.get(eng, 0) + 1
+            except Exception:
+                pass
 
         if not findings:
             return ToolResult(
                 success=True,
-                result=f"No pattern matches found in {repo}.",
+                result=f"No findings in {repo} (patterns + semgrep/bandit/gitleaks all clean).",
                 ui_summary="No matches",
                 ui_details="",
             )
@@ -325,21 +357,26 @@ class VulnScannerTool(BaseTool[VulnScanParams]):
                 case.add_finding(f)
             _case_manager.save_active()
 
+        engine_note = ""
+        if engine_counts:
+            engine_note = " + " + ", ".join(f"{k}:{v}" for k, v in engine_counts.items())
         summary_lines = [
-            f"Pattern analysis complete: {len(findings)} candidate finding(s).",
+            f"Scan complete: {len(findings)} finding(s) (patterns:{pattern_count}{engine_note})",
+            f"Engines: patterns (built-in) + {', '.join(engine_counts.keys()) if engine_counts else 'no external engine found (install semgrep/bandit/gitleaks for free boost)'}",
             "",
-            f"{'ID':<12} {'SEV':<9} {'CWE':<10} LOCATION",
-            "-" * 70,
+            f"{'ID':<12} {'SEV':<9} {'CWE':<10} LOCATION  SOURCE",
+            "-" * 78,
         ]
         for f in findings:
             loc = f"{f.file_path}:{f.line_start}" if f.file_path else "?"
-            summary_lines.append(f"{f.id:<12} {f.severity.value:<9} {f.cwe_id:<10} {loc}")
+            src = f.metadata.get("engine", "patterns") if f.source == "patterns" else f.source
+            summary_lines.append(f"{f.id:<12} {f.severity.value:<9} {f.cwe_id:<10} {loc:<22} {src}")
 
         result_text = "\n".join(summary_lines)
         return ToolResult(
             success=True,
             result=result_text,
-            ui_summary=f"{len(findings)} candidate finding(s)",
+            ui_summary=f"{len(findings)} finding(s) (p:{pattern_count}{engine_note})",
             ui_details=result_text,
         )
 
@@ -402,6 +439,167 @@ class VulnScannerTool(BaseTool[VulnScanParams]):
             key=lambda f: (severity_rank.get(f.severity.value, 9), f.file_path, f.line_start)
         )
         return findings
+
+    async def _run_external_engines(self, repo: Path, min_sev: Severity, timeout: int, cancel_event) -> list[VulnerabilityFinding]:
+        out: list[VulnerabilityFinding] = []
+        # Run semgrep, bandit, gitleaks in parallel (best-effort)
+        tasks = []
+        if shutil.which("semgrep"):
+            tasks.append(self._run_semgrep(repo, min_sev, timeout))
+        if shutil.which("bandit"):
+            tasks.append(self._run_bandit(repo, min_sev, timeout))
+        if shutil.which("gitleaks"):
+            tasks.append(self._run_gitleaks(repo, timeout))
+        if not tasks:
+            return out
+        results = await asyncio.gather(*tasks, return_exceptions=True)
+        for r in results:
+            if isinstance(r, list):
+                out.extend(r)
+        return out
+
+    async def _run_semgrep(self, repo: Path, min_sev: Severity, timeout: int) -> list[VulnerabilityFinding]:
+        # Free, no key: semgrep --config=auto --json (covers 1000+ rules vs our 20 patterns)
+        try:
+            proc = await asyncio.create_subprocess_exec(
+                "semgrep", "--config", "auto", "--json", "--quiet", "--timeout", "30",
+                str(repo),
+                cwd=str(repo), stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
+            )
+            stdout, _ = await asyncio.wait_for(proc.communicate(), timeout=timeout)
+            if not stdout:
+                return []
+            data = json.loads(stdout.decode(errors="ignore"))
+            sev_map = {"ERROR": "high", "WARNING": "medium", "INFO": "low"}
+            rank = {"critical": 0, "high": 1, "medium": 2, "low": 3, "info": 4}
+            min_rank = rank.get(min_sev.value, 4)
+            findings: list[VulnerabilityFinding] = []
+            for r in data.get("results") or []:
+                sev = sev_map.get(r.get("extra", {}).get("severity", "INFO"), "medium")
+                if rank.get(sev, 4) > min_rank:
+                    continue
+                path = r.get("path", "")
+                try:
+                    rel = str(Path(path).relative_to(repo)) if Path(path).is_absolute() else path
+                except Exception:
+                    rel = path
+                start = r.get("start", {}) or {}
+                line = int(start.get("line", 1))
+                rule = r.get("check_id", "semgrep")
+                msg = r.get("extra", {}).get("message", rule)
+                cwe = ""
+                meta = r.get("extra", {}).get("metadata") or {}
+                cwe_raw = meta.get("cwe") or meta.get("cwe_id") or ""
+                if cwe_raw:
+                    cwe = str(cwe_raw).split(":")[0] if ":" in str(cwe_raw) else str(cwe_raw)
+                    if not cwe.startswith("CWE-"):
+                        cwe = f"CWE-{cwe}"
+                findings.append(VulnerabilityFinding(
+                    title=f"Semgrep: {rule.split('.')[-1]}",
+                    description=msg[:500],
+                    severity=Severity.from_str(sev),
+                    cwe_id=cwe,
+                    confidence=0.75,
+                    file_path=rel,
+                    line_start=line,
+                    line_end=int(r.get("end", {}).get("line", line)),
+                    code_snippet=(r.get("extra", {}).get("lines") or "")[:400],
+                    remediation=meta.get("fix") or "Review semgrep rule and apply safe alternative",
+                    status=FindingStatus.OPEN,
+                    source="semgrep",
+                    metadata={"pattern": rule, "engine": "semgrep"},
+                ))
+            return findings[:50]
+        except Exception:
+            return []
+
+    async def _run_bandit(self, repo: Path, min_sev: Severity, timeout: int) -> list[VulnerabilityFinding]:
+        # Free Python SAST — covers B1xx B6xx
+        try:
+            proc = await asyncio.create_subprocess_exec(
+                "bandit", "-r", str(repo), "-f", "json", "-q",
+                cwd=str(repo), stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
+            )
+            stdout, _ = await asyncio.wait_for(proc.communicate(), timeout=timeout)
+            if not stdout:
+                return []
+            data = json.loads(stdout.decode(errors="ignore"))
+            sev_map = {"HIGH": "high", "MEDIUM": "medium", "LOW": "low"}
+            rank = {"critical": 0, "high": 1, "medium": 2, "low": 3, "info": 4}
+            min_rank = rank.get(min_sev.value, 4)
+            findings: list[VulnerabilityFinding] = []
+            for iss in data.get("results") or []:
+                sev = sev_map.get(iss.get("issue_severity", "MEDIUM"), "medium")
+                if rank.get(sev, 4) > min_rank:
+                    continue
+                rel = iss.get("filename", "")
+                try:
+                    rel = str(Path(rel).relative_to(repo)) if Path(rel).is_absolute() else rel
+                except Exception:
+                    pass
+                cwe_raw = iss.get("issue_cwe", {}) or {}
+                cwe_id = f"CWE-{cwe_raw.get('id')}" if cwe_raw.get("id") else ""
+                findings.append(VulnerabilityFinding(
+                    title=f"Bandit: {iss.get('test_id','')} {iss.get('test_name','')}".strip(),
+                    description=iss.get("issue_text","")[:500],
+                    severity=Severity.from_str(sev),
+                    cwe_id=cwe_id,
+                    confidence=0.7,
+                    file_path=rel,
+                    line_start=int(iss.get("line_number", 1)),
+                    line_end=int(iss.get("line_number", 1)),
+                    code_snippet=iss.get("code","")[:400],
+                    remediation="Review Bandit finding and use safe API",
+                    status=FindingStatus.OPEN,
+                    source="bandit",
+                    metadata={"pattern": iss.get("test_id","bandit"), "engine": "bandit"},
+                ))
+            return findings[:30]
+        except Exception:
+            return []
+
+    async def _run_gitleaks(self, repo: Path, timeout: int) -> list[VulnerabilityFinding]:
+        # Free secret detection — complements our regex secrets
+        try:
+            proc = await asyncio.create_subprocess_exec(
+                "gitleaks", "detect", "--source", str(repo), "--no-git", "-f", "json",
+                cwd=str(repo), stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
+            )
+            stdout, _ = await asyncio.wait_for(proc.communicate(), timeout=min(timeout, 30))
+            if not stdout:
+                return []
+            # gitleaks json is array of leaks
+            try:
+                data = json.loads(stdout.decode(errors="ignore"))
+            except Exception:
+                return []
+            if not isinstance(data, list):
+                return []
+            findings: list[VulnerabilityFinding] = []
+            for leak in data[:20]:
+                fpath = leak.get("File", "")
+                try:
+                    fpath = str(Path(fpath).relative_to(repo)) if Path(fpath).is_absolute() else fpath
+                except Exception:
+                    pass
+                findings.append(VulnerabilityFinding(
+                    title=f"Gitleaks: {leak.get('RuleID','secret')} leaked",
+                    description=f"Secret detected: {leak.get('Description','')} — {leak.get('Secret','')[:30]}...",
+                    severity=Severity.HIGH,
+                    cwe_id="CWE-798",
+                    confidence=0.9,
+                    file_path=fpath,
+                    line_start=int(leak.get("StartLine", 1) or 1),
+                    line_end=int(leak.get("EndLine", 1) or 1),
+                    code_snippet=leak.get("Secret","")[:100],
+                    remediation="Rotate secret, remove from repo, use env/secret manager",
+                    status=FindingStatus.OPEN,
+                    source="gitleaks",
+                    metadata={"pattern": leak.get("RuleID","gitleaks"), "engine": "gitleaks"},
+                ))
+            return findings
+        except Exception:
+            return []
 
     @staticmethod
     def _snippet(content: str, line_start: int, before: int = 2, after: int = 2) -> str:

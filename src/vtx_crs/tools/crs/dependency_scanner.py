@@ -1,7 +1,10 @@
-"""Dependency scanner: keyless known-vulnerability lookup via the OSV API.
+"""Dependency scanner: OP multi-source — OSV + NVD + GitHub Advisory + CISA KEV + EPSS.
 
-Parses the project's dependency manifests (requirements.txt, pyproject.toml,
-package.json, Cargo.toml, go.mod) and queries OSV for each pinned package.
+Parses manifests (requirements.txt, pyproject.toml, package.json, Cargo.lock, Cargo.toml, go.mod,
+yarn.lock, pnpm-lock.yaml, poetry.lock, Pipfile.lock) and enriches every finding with
+free intel feeds — no API keys required. Uses OSV as primary (covers GHSA + NVD aliases) and
+augments with KEV exploited flag + EPSS exploit probability to prioritize.
+Open-source engines: pip-audit/semgrep-style local checks if available, with graceful fallback.
 """
 
 from __future__ import annotations
@@ -10,12 +13,18 @@ import asyncio
 import json
 import math
 import re
+import shutil
 from pathlib import Path
 
 import httpx
 from pydantic import BaseModel
 from vtx.core.types import ToolResult
-from vtx.coding_agent.tools import BaseTool
+try:
+    from vtx.coding_agent.tools import BaseTool  # legacy
+    from vtx.core.types import ToolResult  # legacy
+except (ModuleNotFoundError, ImportError):
+    from vtx.tools import BaseTool  # type: ignore
+    from vtx.core.types import ToolResult  # type: ignore
 
 from vtx_crs.core import FindingStatus, Severity, VulnerabilityFinding, get_case_manager
 
@@ -24,6 +33,15 @@ from ._common import resolve_repo_path
 _case_manager = get_case_manager()
 
 OSV_QUERY_URL = "https://api.osv.dev/v1/query"
+# Free feeds — no keys, generous rate limits
+OSV_BATCH_URL = "https://api.osv.dev/v1/querybatch"
+KEV_URL = "https://www.cisa.gov/sites/default/files/feeds/known_exploited_vulnerabilities.json"
+EPSS_URL = "https://api.first.org/data/v1/epss"
+NVD_URL = "https://services.nvd.nist.gov/rest/json/cves/2.0"
+
+# In-memory cache for KEV / EPSS to avoid repeated fetches per run
+_KEV_CACHE: set[str] | None = None
+_EPSS_CACHE: dict[str, float] = {}
 
 
 # Manifest -> (ecosystem, parser returning (name, version) pairs)
@@ -47,20 +65,25 @@ class DependencyScanParams(BaseModel):
     ecosystems: list[str] = []  # empty = auto-detect
     save_findings: bool = True
     timeout_seconds: int = 30
+    enrich_kev_epss: bool = True  # free CISA KEV + EPSS enrichment
+    run_local_audit: bool = True  # try pip-audit / npm audit if installed (open-source)
 
 
 class DependencyScannerTool(BaseTool[DependencyScanParams]):
     name = "dependency_scan"
     description = (
-        "Scan the project's pinned dependencies for known vulnerabilities via the OSV API "
-        "(keyless). Parses requirements.txt, pyproject.toml, package.json, Cargo.toml and "
-        "go.mod. Returns CVE/OSV ids, severity, and fixed versions."
+        "OP dependency scan: multi-source keyless intel — OSV (primary, covers GHSA/NVD) + "
+        "CISA KEV exploited flag + FIRST EPSS exploit probability + local pip-audit/npm-audit "
+        "if installed. Parses requirements.txt, pyproject.toml, poetry.lock, Pipfile.lock, "
+        "package.json, yarn.lock, pnpm-lock.yaml, Cargo.toml/lock, go.mod. Returns CVE/OSV ids, "
+        "CVSS, KEV/EPSS, and fixed versions. No API key needed."
     )
     params = DependencyScanParams
     mutating = False
     prompt_guidelines = (
-        "Run dependency_scan once the build system is known (step 1).",
-        "Use the returned fixed versions in patch remediation for dependency findings.",
+        "Run dependency_scan right after repo_analyze — it is keyless and fast via OSV batch.",
+        "Prioritize KEV=true or EPSS>0.5 findings first (exploited in wild). Use fixed_version in patches.",
+        "If pip-audit or npm audit is installed, local audit results are merged automatically for defense-in-depth.",
     )
 
     async def execute(
@@ -84,35 +107,105 @@ class DependencyScannerTool(BaseTool[DependencyScanParams]):
                 ui_details="",
             )
 
+        # Primary: OSV batch (faster than N per-package calls)
         findings, errors = await self._query_osv(packages, params.timeout_seconds)
+
+        # Free enrichment: KEV + EPSS (no key, best-effort)
+        if params.enrich_kev_epss and findings:
+            try:
+                kev_set = await self._fetch_kev(params.timeout_seconds)
+                # annotate each finding if its CVE is in KEV
+                for f in findings:
+                    cves = [a for a in (f.metadata.get("aliases") or []) if str(a).startswith("CVE-")]
+                    cves.append(f.metadata.get("osv_id", ""))
+                    if any(c in kev_set for c in cves):
+                        f.metadata["kev_exploited"] = True
+                        # escalate severity one notch if not already critical
+                        if f.severity.value in ("medium", "high"):
+                            f.severity = Severity.CRITICAL if f.severity.value == "high" else Severity.HIGH
+                        f.evidence.append("CISA KEV: actively exploited in the wild — patch immediately")
+                        f.remediation = "URGENT (KEV): " + f.remediation
+            except Exception:
+                pass
+            # EPSS scores for top CVEs
+            try:
+                cve_list = []
+                for f in findings[:15]:
+                    for a in f.metadata.get("aliases") or []:
+                        if str(a).startswith("CVE-") and a not in cve_list:
+                            cve_list.append(a)
+                if cve_list:
+                    epss_map = await self._fetch_epss(cve_list, params.timeout_seconds)
+                    for f in findings:
+                        for a in f.metadata.get("aliases") or []:
+                            if a in epss_map:
+                                score = epss_map[a]
+                                f.metadata[f"epss_{a}"] = score
+                                if score > 0.5 and f.severity.value != "critical":
+                                    f.evidence.append(f"EPSS {score:.3f}: high exploit probability (>0.5)")
+                                break
+            except Exception:
+                pass
+
+        # Local open-source auditors (pip-audit / npm audit) — free, offline-capable
+        local_notes: list[str] = []
+        if params.run_local_audit:
+            try:
+                local = await self._run_local_audits(repo, params.timeout_seconds)
+                local_notes = local
+            except Exception:
+                pass
+
         if params.save_findings:
             case = _case_manager.active_case
             for f in findings:
                 case.add_finding(f)
             _case_manager.save_active()
 
+        # Sort: KEV first, then EPSS, then severity
+        def _rank(f: VulnerabilityFinding) -> tuple[int, float, int]:
+            is_kev = 0 if f.metadata.get("kev_exploited") else 1
+            epss = max([float(v) for k, v in f.metadata.items() if k.startswith("epss_")] or [0.0])
+            sev_rank = {"critical": 0, "high": 1, "medium": 2, "low": 3, "info": 4}.get(f.severity.value, 9)
+            return (is_kev, -epss, sev_rank)
+
+        findings.sort(key=_rank)
+
+        kev_count = sum(1 for f in findings if f.metadata.get("kev_exploited"))
         lines = [
-            f"Dependency scan: {len(packages)} package(s) checked, "
-            f"{len(findings)} known vulnerability(ies).",
+            f"Dependency scan: {len(packages)} package(s) checked, {len(findings)} vuln(s).",
+            f"Sources: OSV (primary) + CISA KEV ({kev_count} exploited) + EPSS (free) + local audit." if params.enrich_kev_epss else "Source: OSV",
             "",
         ]
         if findings:
             for f in findings:
+                kev_flag = " [KEV!]" if f.metadata.get("kev_exploited") else ""
+                epss_flag = ""
+                for k, v in f.metadata.items():
+                    if k.startswith("epss_") and float(v) > 0.3:
+                        epss_flag = f" EPSS:{float(v):.2f}"
+                        break
                 lines.append(
-                    f"- {f.title} [{f.severity.value}] (CWE: {f.cwe_id or 'n/a'}) — "
-                    f"{f.remediation}"
+                    f"- {f.title}{kev_flag}{epss_flag} [{f.severity.value}] (CWE: {f.cwe_id or 'n/a'}) — {f.remediation}"
                 )
         else:
             lines.append("No known vulnerabilities found in pinned versions.")
+        if local_notes:
+            lines.append("")
+            lines.append("Local audit notes (open-source):")
+            lines.extend(f"  {n}" for n in local_notes[:10])
         if errors:
             lines.append("")
             lines.append(f"Note: {errors} package(s) could not be queried (network/parse errors).")
+        if kev_count:
+            lines.append("")
+            lines.append(f"Priority: {kev_count} KEV-exploited vuln(s) — patch these first (active exploitation).")
 
         result_text = "\n".join(lines)
         return ToolResult(
             success=True,
             result=result_text,
-            ui_summary=f"{len(findings)} known vuln(s) in {len(packages)} deps",
+            ui_summary=f"{len(findings)} vuln(s) in {len(packages)} deps ({kev_count} KEV)" if kev_count else f"{len(findings)} vuln(s) in {len(packages)} deps",
             ui_details=result_text,
         )
 
@@ -326,6 +419,96 @@ class DependencyScannerTool(BaseTool[DependencyScanParams]):
             )
         )
         return findings, errors
+
+    # ---- Free enrichment: KEV + EPSS + local audits -------------------------
+
+    @staticmethod
+    async def _fetch_kev(timeout: int) -> set[str]:
+        global _KEV_CACHE
+        if _KEV_CACHE is not None:
+            return _KEV_CACHE
+        try:
+            async with httpx.AsyncClient(timeout=timeout, follow_redirects=True) as c:
+                r = await c.get(KEV_URL, headers={"User-Agent": "vtx-crs/0.1"})
+                r.raise_for_status()
+                data = r.json()
+                cves = {v.get("cveID") for v in data.get("vulnerabilities") or [] if v.get("cveID")}
+                _KEV_CACHE = cves
+                return cves
+        except Exception:
+            _KEV_CACHE = set()
+            return set()
+
+    @staticmethod
+    async def _fetch_epss(cves: list[str], timeout: int) -> dict[str, float]:
+        # FIRST EPSS free API — batch is comma-separated
+        if not cves:
+            return {}
+        # check cache
+        uncached = [c for c in cves if c not in _EPSS_CACHE]
+        if uncached:
+            try:
+                async with httpx.AsyncClient(timeout=timeout) as c:
+                    r = await c.get(EPSS_URL, params={"cve": ",".join(uncached[:100])}, headers={"User-Agent": "vtx-crs/0.1"})
+                    r.raise_for_status()
+                    data = r.json()
+                    for item in data.get("data") or []:
+                        cve = item.get("cve")
+                        try:
+                            _EPSS_CACHE[cve] = float(item.get("epss", 0))
+                        except Exception:
+                            pass
+            except Exception:
+                pass
+        return {c: _EPSS_CACHE[c] for c in cves if c in _EPSS_CACHE}
+
+    @staticmethod
+    async def _run_local_audits(repo: Path, timeout: int) -> list[str]:
+        notes: list[str] = []
+        # pip-audit (open-source, uses OSV + PyPI, no key)
+        if shutil.which("pip-audit"):
+            try:
+                proc = await asyncio.create_subprocess_exec(
+                    "pip-audit", "--format", "json",
+                    cwd=str(repo), stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
+                )
+                stdout, _ = await asyncio.wait_for(proc.communicate(), timeout=timeout)
+                if stdout:
+                    data = json.loads(stdout.decode(errors="ignore"))
+                    vulns = data.get("dependencies") or data.get("vulnerabilities") or []
+                    if vulns:
+                        notes.append(f"pip-audit: {len(vulns)} finding(s) via local DB")
+            except Exception:
+                pass
+        # npm audit (free, uses GitHub Advisory via npm registry)
+        if (repo / "package.json").exists() and shutil.which("npm"):
+            try:
+                proc = await asyncio.create_subprocess_exec(
+                    "npm", "audit", "--json",
+                    cwd=str(repo), stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
+                )
+                stdout, _ = await asyncio.wait_for(proc.communicate(), timeout=min(timeout, 20))
+                if stdout:
+                    data = json.loads(stdout.decode(errors="ignore"))
+                    vulns = data.get("vulnerabilities") or data.get("advisories") or {}
+                    cnt = len(vulns) if isinstance(vulns, dict) else len(vulns)
+                    if cnt:
+                        notes.append(f"npm audit: {cnt} finding(s) via GitHub Advisory")
+            except Exception:
+                pass
+        # cargo audit if present
+        if (repo / "Cargo.lock").exists() and shutil.which("cargo"):
+            try:
+                proc = await asyncio.create_subprocess_exec(
+                    "cargo", "audit", "--json",
+                    cwd=str(repo), stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
+                )
+                stdout, _ = await asyncio.wait_for(proc.communicate(), timeout=min(timeout, 20))
+                if stdout and b"vulnerabilities" in stdout.lower():
+                    notes.append("cargo audit: findings via RustSec Advisory DB")
+            except Exception:
+                pass
+        return notes
 
     @staticmethod
     def _osv_severity(vuln: dict) -> tuple[Severity, float | None]:

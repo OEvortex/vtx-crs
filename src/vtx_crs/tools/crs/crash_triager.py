@@ -44,10 +44,7 @@ class CrashTriagerTool(BaseTool[CrashTriageParams]):
     )
     params = CrashTriageParams
     mutating = False
-    prompt_guidelines = (
-        "Run crash_triage on output from fuzzing or dynamic execution.",
-        "Pass output directly into exploit_feasibility to evaluate exploitability under target mitigations.",
-    )
+    prompt_guidelines = ()
 
     async def execute(
         self, params: CrashTriageParams, cancel_event: asyncio.Event | None = None

@@ -46,10 +46,7 @@ class CoverageAnalyzerTool(BaseTool[CoverageAnalyzeParams]):
     )
     params = CoverageAnalyzeParams
     mutating = False
-    prompt_guidelines = (
-        "Use coverage_analyze to locate sensitive code branches not tested by the test suite.",
-        "Generate harnesses with harness_gen for uncovered high-severity sinks.",
-    )
+    prompt_guidelines = ()
 
     async def execute(
         self, params: CoverageAnalyzeParams, cancel_event: asyncio.Event | None = None

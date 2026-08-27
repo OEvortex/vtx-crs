@@ -78,10 +78,7 @@ class TestRunnerTool(BaseTool[TestRunParams]):
     )
     params = TestRunParams
     mutating = False
-    prompt_guidelines = (
-        "Run tests following a successful build to verify that no functional regression was introduced.",
-        "Fix any test regressions prior to marking a patch as complete.",
-    )
+    prompt_guidelines = ()
 
     async def execute(
         self, params: TestRunParams, cancel_event: asyncio.Event | None = None

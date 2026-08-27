@@ -48,10 +48,7 @@ class SymbolicExecutorTool(BaseTool[SymbolicExecuteParams]):
     )
     params = SymbolicExecuteParams
     mutating = False
-    prompt_guidelines = (
-        "Use symbolic_execute when a fuzzer gets stuck on strict magic byte checks or branch conditions.",
-        "Feed generated path inputs back into fuzz_target as high-value seeds.",
-    )
+    prompt_guidelines = ()
 
     async def execute(
         self, params: SymbolicExecuteParams, cancel_event: asyncio.Event | None = None

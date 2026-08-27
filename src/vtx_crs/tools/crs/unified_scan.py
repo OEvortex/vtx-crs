@@ -47,11 +47,7 @@ class UnifiedScanTool(BaseTool[UnifiedScanParams]):
     )
     params = UnifiedScanParams
     mutating = False
-    prompt_guidelines = (
-        "Prefer unified_scan as the primary discovery tool to conserve token context and maximize execution velocity.",
-        "Always keep save_findings=True so findings are recorded in the case ledger.",
-        "Verify candidate findings by reading code context (file:line) before proceeding to patching.",
-    )
+    prompt_guidelines = ()
 
     async def execute(self, params: UnifiedScanParams, cancel_event: asyncio.Event | None = None) -> ToolResult:
         repo = resolve_repo_path(params.repo_path, _case_manager.active_case.repo_path)

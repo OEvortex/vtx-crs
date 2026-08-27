@@ -47,10 +47,7 @@ class PovGeneratorTool(BaseTool[PovGenerateParams]):
     )
     params = PovGenerateParams
     mutating = True
-    prompt_guidelines = (
-        "Use pov_generate to produce the verification artifact for security_validate.",
-        "Ensure PoCs are non-destructive and self-contained.",
-    )
+    prompt_guidelines = ()
 
     async def execute(
         self, params: PovGenerateParams, cancel_event: asyncio.Event | None = None

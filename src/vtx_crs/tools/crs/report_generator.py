@@ -40,10 +40,7 @@ class ReportGeneratorTool(BaseTool[ReportGenParams]):
     )
     params = ReportGenParams
     mutating = True
-    prompt_guidelines = (
-        "Call generate_report as the final step of the engagement after all validations pass.",
-        "Provide a concise, factual executive_summary summarizing findings and fixes.",
-    )
+    prompt_guidelines = ()
 
     async def execute(
         self, params: ReportGenParams, cancel_event: asyncio.Event | None = None

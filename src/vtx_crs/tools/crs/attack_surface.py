@@ -40,11 +40,7 @@ class AttackSurfaceTool(BaseTool[AttackSurfaceParams]):
     )
     params = AttackSurfaceParams
     mutating = False
-    prompt_guidelines = (
-        "Run attack_surface immediately after repo_analyze to construct the threat model.",
-        "Focus first on P0 targets (unauthenticated public entry points directly reaching sensitive sinks).",
-        "Use mapped entry points to drive parameters for unified_scan and taint_analyze.",
-    )
+    prompt_guidelines = ()
 
     async def execute(self, params: AttackSurfaceParams, cancel_event: asyncio.Event | None = None) -> ToolResult:
         repo = resolve_repo_path(params.repo_path, _case_manager.active_case.repo_path)

@@ -44,10 +44,7 @@ class SecurityValidatorTool(BaseTool[SecurityValidateParams]):
     )
     params = SecurityValidateParams
     mutating = True
-    prompt_guidelines = (
-        "Always execute security_validate with the original PoC command to prove the vulnerability is completely resolved.",
-        "Pass finding_id to mark the finding status as FIXED in the case ledger.",
-    )
+    prompt_guidelines = ()
 
     async def execute(
         self, params: SecurityValidateParams, cancel_event: asyncio.Event | None = None

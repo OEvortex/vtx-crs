@@ -303,11 +303,7 @@ class VulnScannerTool(BaseTool[VulnScanParams]):
     )
     params = VulnScanParams
     mutating = False
-    prompt_guidelines = (
-        "Use vuln_scan for focused single-file scans or when unified_scan is unavailable.",
-        "Verify all matches against the actual code context before claiming a vulnerability.",
-        "Keep save_findings=True so findings are recorded in the active case.",
-    )
+    prompt_guidelines = ()
 
     async def execute(
         self, params: VulnScanParams, cancel_event: asyncio.Event | None = None

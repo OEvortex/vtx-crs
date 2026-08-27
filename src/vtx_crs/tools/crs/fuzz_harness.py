@@ -48,10 +48,7 @@ class FuzzHarnessTool(BaseTool[FuzzParams]):
     )
     params = FuzzParams
     mutating = False
-    prompt_guidelines = (
-        "Use fuzz_target to discover edge-case inputs that crash parsers or handlers.",
-        "Pass any resulting crash directly to offensive_chain or crash_triage for classification.",
-    )
+    prompt_guidelines = ()
 
     async def execute(
         self, params: FuzzParams, cancel_event: asyncio.Event | None = None

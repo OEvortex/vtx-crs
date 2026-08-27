@@ -59,11 +59,7 @@ class TaintAnalyzerTool(BaseTool[TaintAnalyzeParams]):
     )
     params = TaintAnalyzeParams
     mutating = False
-    prompt_guidelines = (
-        "Use taint_analyze to prove or disprove that untrusted input reaches a suspicious sink.",
-        "A finding is only valid if a clean taint path exists from an untrusted source to an unescaped sink.",
-        "If a sanitization guard or allowlist exists along the path, mark the candidate flow as safe.",
-    )
+    prompt_guidelines = ()
 
     async def execute(
         self, params: TaintAnalyzeParams, cancel_event: asyncio.Event | None = None

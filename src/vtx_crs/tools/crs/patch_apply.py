@@ -46,11 +46,7 @@ class PatchApplyTool(BaseTool[PatchApplyParams]):
     )
     params = PatchApplyParams
     mutating = True
-    prompt_guidelines = (
-        "Always execute patch_apply with dry_run=True first to verify hunk context.",
-        "Pass finding_ids to ensure remediation tracking is persisted to the active case.",
-        "If application fails due to line drift, inspect the target file lines and adjust @@ header context.",
-    )
+    prompt_guidelines = ()
 
     async def execute(
         self, params: PatchApplyParams, cancel_event: asyncio.Event | None = None

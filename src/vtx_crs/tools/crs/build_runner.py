@@ -72,10 +72,7 @@ class BuildRunnerTool(BaseTool[BuildParams]):
     )
     params = BuildParams
     mutating = True
-    prompt_guidelines = (
-        "Run build_project after patch application to ensure code compiles cleanly.",
-        "Inspect compiler error tails if the build fails, and adjust the patch accordingly.",
-    )
+    prompt_guidelines = ()
 
     async def execute(
         self, params: BuildParams, cancel_event: asyncio.Event | None = None

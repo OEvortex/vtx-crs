@@ -44,10 +44,7 @@ class MitigationInjectorTool(BaseTool[MitigationInjectParams]):
     )
     params = MitigationInjectParams
     mutating = True
-    prompt_guidelines = (
-        "Use mitigation_inject to harden build systems after source-level vulnerabilities are patched.",
-        "Verify that injected flags do not break compilation by running build_project immediately afterward.",
-    )
+    prompt_guidelines = ()
 
     async def execute(
         self, params: MitigationInjectParams, cancel_event: asyncio.Event | None = None

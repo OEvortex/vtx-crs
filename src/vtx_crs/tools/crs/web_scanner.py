@@ -53,10 +53,7 @@ class WebScannerTool(BaseTool[WebScanParams]):
     )
     params = WebScanParams
     mutating = False
-    prompt_guidelines = (
-        "Run web_scan against authorized running web application instances.",
-        "Verify any flagged reflection or SQL error by checking the underlying backend route handler.",
-    )
+    prompt_guidelines = ()
 
     async def execute(self, params: WebScanParams, cancel_event: asyncio.Event | None = None) -> ToolResult:
         url = params.target_url.strip()

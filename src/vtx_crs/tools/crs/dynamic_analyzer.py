@@ -46,10 +46,7 @@ class DynamicAnalyzerTool(BaseTool[DynamicAnalyzeParams]):
     )
     params = DynamicAnalyzeParams
     mutating = False
-    prompt_guidelines = (
-        "Use dynamic_analyze to monitor actual runtime behavior (e.g. verifying if a command injection triggers an execve syscall).",
-        "Inspect captured dangerous syscalls (execve, mprotect, connect) and crash signals (SIGSEGV, SIGABRT).",
-    )
+    prompt_guidelines = ()
 
     async def execute(
         self, params: DynamicAnalyzeParams, cancel_event: asyncio.Event | None = None

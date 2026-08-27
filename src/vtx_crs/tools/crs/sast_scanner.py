@@ -124,10 +124,7 @@ class SastScannerTool(BaseTool[SastScanParams]):
     )
     params = SastScanParams
     mutating = False
-    prompt_guidelines = (
-        "Use sast_scan for granular structural checks or when validating control-flow fixes.",
-        "Combine structural findings with attack_surface to prioritize externally exposed endpoints.",
-    )
+    prompt_guidelines = ()
 
     async def execute(
         self, params: SastScanParams, cancel_event: asyncio.Event | None = None

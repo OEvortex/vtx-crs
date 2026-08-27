@@ -41,10 +41,7 @@ class CaseManagerTool(BaseTool[CaseManagerParams]):
     )
     params = CaseManagerParams
     mutating = True
-    prompt_guidelines = (
-        "Initialize the case ledger at the start of an engagement using case_manager(action='create', ...).",
-        "Call case_manager(action='summary') between phases to review current finding statuses.",
-    )
+    prompt_guidelines = ()
 
     async def execute(
         self, params: CaseManagerParams, cancel_event: asyncio.Event | None = None

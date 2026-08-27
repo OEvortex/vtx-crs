@@ -45,10 +45,7 @@ class HarnessGeneratorTool(BaseTool[HarnessGenParams]):
     )
     params = HarnessGenParams
     mutating = True
-    prompt_guidelines = (
-        "Use harness_gen to create executable test drivers for high/critical sinks that need dynamic proof.",
-        "Pass generated harnesses to dynamic_analyze or fuzz_target to verify crashes or logic bugs.",
-    )
+    prompt_guidelines = ()
 
     async def execute(
         self, params: HarnessGenParams, cancel_event: asyncio.Event | None = None

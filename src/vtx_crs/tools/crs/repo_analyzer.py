@@ -122,11 +122,7 @@ class RepoAnalyzerTool(BaseTool[RepoAnalyzeParams]):
     )
     params = RepoAnalyzeParams
     mutating = False
-    prompt_guidelines = (
-        "Always execute repo_analyze as Step 1 on any target repository to establish architectural context.",
-        "Use detected manifest files (e.g. pyproject.toml, package.json) and entry points to guide threat modeling.",
-        "Pass output directly into attack_surface to construct the trust boundary map.",
-    )
+    prompt_guidelines = ()
 
     async def execute(
         self, params: RepoAnalyzeParams, cancel_event: asyncio.Event | None = None

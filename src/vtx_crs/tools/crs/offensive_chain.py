@@ -47,11 +47,7 @@ class OffensiveChainTool(BaseTool[OffensiveChainParams]):
     )
     params = OffensiveChainParams
     mutating = True
-    prompt_guidelines = (
-        "Use offensive_chain immediately whenever a crash is detected by fuzzing or runtime testing.",
-        "Pass binary_path when testing native binaries to evaluate NX/PIE/Canary/FORTIFY mitigations.",
-        "Use generated PoC directly in security_validate after applying the fix.",
-    )
+    prompt_guidelines = ()
 
     async def execute(self, params: OffensiveChainParams, cancel_event: asyncio.Event | None = None) -> ToolResult:
         repo = resolve_repo_path(params.repo_path, _case_manager.active_case.repo_path)

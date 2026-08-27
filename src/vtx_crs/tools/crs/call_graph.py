@@ -45,10 +45,7 @@ class CallGraphTool(BaseTool[CallGraphParams]):
     )
     params = CallGraphParams
     mutating = False
-    prompt_guidelines = (
-        "Use call_graph to verify that candidate vulnerabilities in library functions are reachable from public entry points.",
-        "Deprioritize sinks residing in dead or unreachable code paths.",
-    )
+    prompt_guidelines = ()
 
     async def execute(
         self, params: CallGraphParams, cancel_event: asyncio.Event | None = None

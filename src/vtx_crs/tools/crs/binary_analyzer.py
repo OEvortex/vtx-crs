@@ -41,10 +41,7 @@ class BinaryAnalyzerTool(BaseTool[BinaryAnalyzeParams]):
     )
     params = BinaryAnalyzeParams
     mutating = False
-    prompt_guidelines = (
-        "Use binary_analyze when source code is absent or when auditing compiled native artifacts.",
-        "Check mitigation flags (NX/PIE/RELRO/Canary) to determine binary exploit feasibility.",
-    )
+    prompt_guidelines = ()
 
     async def execute(
         self, params: BinaryAnalyzeParams, cancel_event: asyncio.Event | None = None

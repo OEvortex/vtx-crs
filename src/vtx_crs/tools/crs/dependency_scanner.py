@@ -81,11 +81,7 @@ class DependencyScannerTool(BaseTool[DependencyScanParams]):
     )
     params = DependencyScanParams
     mutating = False
-    prompt_guidelines = (
-        "Run dependency_scan immediately after repo_analyze for keyless supply-chain intelligence.",
-        "Prioritize vulnerabilities with KEV=True or EPSS > 0.5 as P0 critical items for immediate patching.",
-        "Use returned fixed_version strings when formulating manifest version bump patches.",
-    )
+    prompt_guidelines = ()
 
     async def execute(
         self, params: DependencyScanParams, cancel_event: asyncio.Event | None = None

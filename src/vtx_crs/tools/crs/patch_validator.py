@@ -46,10 +46,7 @@ class PatchValidatorTool(BaseTool[PatchValidateParams]):
     )
     params = PatchValidateParams
     mutating = True
-    prompt_guidelines = (
-        "Run patch_validate to verify patches in complete isolation prior to final acceptance.",
-        "Ensure build and test commands align with the project's native tooling.",
-    )
+    prompt_guidelines = ()
 
     async def execute(
         self, params: PatchValidateParams, cancel_event: asyncio.Event | None = None

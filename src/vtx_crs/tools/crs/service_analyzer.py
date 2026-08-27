@@ -45,10 +45,7 @@ class ServiceAnalyzerTool(BaseTool[ServiceAnalyzeParams]):
     )
     params = ServiceAnalyzeParams
     mutating = False
-    prompt_guidelines = (
-        "Use service_analyze to audit open ports and running listeners on the target host.",
-        "Strictly adhere to authorization guidelines: only scan authorized local or designated targets.",
-    )
+    prompt_guidelines = ()
 
     async def execute(
         self, params: ServiceAnalyzeParams, cancel_event: asyncio.Event | None = None

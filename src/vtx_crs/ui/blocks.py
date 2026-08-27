@@ -123,12 +123,10 @@ def _collapsed_preview(details: str, max_lines: int = 3) -> Text:
         else:
             style = config.ui.colors.dim
         clipped = line[:120] + ("…" if len(line) > 120 else "")
-        out.append(f"    {clipped}
-", style=style)
+        out.append(f"    {clipped}\n", style=style)
     remaining = len(raw_lines) - len(filtered)
     if remaining > 0:
-        out.append(f"    ↳ +{remaining} more  ·  ctrl+] to expand
-", style=f"{config.ui.colors.accent} italic")
+        out.append(f"    ↳ +{remaining} more  ·  ctrl+o to expand\n", style=f"{config.ui.colors.accent} italic")
     return out
 
 
@@ -233,10 +231,6 @@ class RepoAnalyzerBlock(ToolBlock):
         output.remove_class("-hidden")
         output.remove_class("-details")
         output.update(rendered)
-
-
-# We need the Label type from textual for the query_one calls above.
-from textual.widgets import Label  # noqa: E402  (placed after RepoAnalyzerBlock to keep header tidy)
 
 
 # ---------------------------------------------------------------------------

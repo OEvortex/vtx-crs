@@ -1,13 +1,15 @@
 import argparse
 import asyncio
 import os
+import re
 import sys
+
+import vtx_crs._compat  # noqa: F401 — must be first, installs vtx.llm.tool_parser alias
 
 try:
     from vtx.ai.providers import PROVIDER_API_BY_NAME  # legacy
     from vtx.coding_agent.config import config  # legacy
 except (ModuleNotFoundError, ImportError):
-    import vtx_crs._compat  # noqa: F401
     from vtx.llm.providers import PROVIDER_API_BY_NAME  # type: ignore
     try:
         from vtx.config import get_config
@@ -16,6 +18,8 @@ except (ModuleNotFoundError, ImportError):
         from vtx_crs.config import config  # type: ignore
 from vtx_crs.tools import register_with_vtx
 from vtx_crs.version import VERSION
+
+_UUID_RE = re.compile(r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$", re.I)
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -26,7 +30,6 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--repo",
-        "-r",
         dest="repo_path",
         help="Path to the target source code repository to analyze (default: current directory)",
     )
@@ -67,6 +70,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--resume",
+        "-r",
         dest="resume_session",
         help="Resume a specific session by ID (full or unique prefix)",
     )
@@ -106,8 +110,14 @@ def main() -> None:
     parser = build_parser()
     args = parser.parse_args()
 
+    # Fix: user typed `vtx-crs -r <uuid>` meaning resume, not repo. Detect UUID-like repo_path.
+    if args.repo_path and _UUID_RE.match(args.repo_path.strip()) and not args.resume_session and not args.continue_recent:
+        # Treat as `vtx-crs --resume <uuid>` for UX (common mistake from exit hint)
+        args.resume_session = args.repo_path.strip()
+        args.repo_path = None
+
     if args.prompt is not None and (args.continue_recent or args.resume_session):
-        parser.error("-c/--continue and -r/--resume are not supported with -p/--prompt")
+        parser.error("-c/--continue and --resume are not supported with -p/--prompt")
 
     if args.insecure_skip_verify:
         config.llm.tls.insecure_skip_verify = True

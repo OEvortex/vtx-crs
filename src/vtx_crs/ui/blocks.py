@@ -19,7 +19,7 @@ from typing import TYPE_CHECKING, Any
 
 from rich.text import Text
 from textual.app import ComposeResult
-from textual.widgets import Static
+from textual.widgets import Label, Static
 try:
     from vtx.tui.blocks import ToolBlock
     from vtx.coding_agent.config import config
@@ -101,6 +101,37 @@ def _fence(text: str, max_lines: int = 18) -> list[Text]:
     return out
 
 
+
+def _collapsed_preview(details: str, max_lines: int = 3) -> Text:
+    """Modern collapsed preview — 3 lines + indicator (vtx-crs)."""
+    if not details:
+        return Text()
+    # Strip sections markers and keep first meaningful lines
+    raw_lines = [l.rstrip() for l in details.splitlines() if l.strip()]
+    # Filter out markdown headers for collapsed compactness
+    filtered = [l for l in raw_lines if not l.startswith("---")][:max_lines]
+    out = Text()
+    for line in filtered:
+        # color severity hints
+        low = line.lower()
+        if any(k in low for k in ("critical", "exploitable", "kev", "crash")):
+            style = config.ui.colors.failed
+        elif any(k in low for k in ("high", "medium", "warning")):
+            style = config.ui.colors.notice
+        elif any(k in low for k in ("low", "info", "passed")):
+            style = config.ui.colors.muted
+        else:
+            style = config.ui.colors.dim
+        clipped = line[:120] + ("…" if len(line) > 120 else "")
+        out.append(f"    {clipped}
+", style=style)
+    remaining = len(raw_lines) - len(filtered)
+    if remaining > 0:
+        out.append(f"    ↳ +{remaining} more  ·  ctrl+] to expand
+", style=f"{config.ui.colors.accent} italic")
+    return out
+
+
 def _set_tool_attr() -> None:
     """Placeholder for type-checkers; real wiring happens in register_crs_blocks."""
 
@@ -157,7 +188,17 @@ class RepoAnalyzerBlock(ToolBlock):
         if not self._ui_details:
             return super()._render_result_output()
         if not self._expanded:
-            return super()._render_result_output()
+            # Modern collapsed — few lines preview (default collapsed)
+            try:
+                output = self.query_one("#tool-output", Label)
+            except Exception:
+                return
+            output.remove_class("-hidden")
+            output.add_class("-details")
+            self.add_class("-compact")
+            self.remove_class("-with-details")
+            output.update(_collapsed_preview(self._ui_details or ""))
+            return
         try:
             output = self.query_one("#tool-output", Label)
         except Exception:
@@ -222,7 +263,17 @@ class _CommandRunnerBlock(ToolBlock):
         if not self._ui_details:
             return super()._render_result_output()
         if not self._expanded:
-            return super()._render_result_output()
+            # Modern collapsed — few lines preview (default collapsed)
+            try:
+                output = self.query_one("#tool-output", Label)
+            except Exception:
+                return
+            output.remove_class("-hidden")
+            output.add_class("-details")
+            self.add_class("-compact")
+            self.remove_class("-with-details")
+            output.update(_collapsed_preview(self._ui_details or ""))
+            return
         try:
             output = self.query_one("#tool-output", Label)
         except Exception:
@@ -287,7 +338,17 @@ class VulnScannerBlock(ToolBlock):
         if not self._ui_details:
             return super()._render_result_output()
         if not self._expanded:
-            return super()._render_result_output()
+            # Modern collapsed — few lines preview (default collapsed)
+            try:
+                output = self.query_one("#tool-output", Label)
+            except Exception:
+                return
+            output.remove_class("-hidden")
+            output.add_class("-details")
+            self.add_class("-compact")
+            self.remove_class("-with-details")
+            output.update(_collapsed_preview(self._ui_details or ""))
+            return
         try:
             output = self.query_one("#tool-output", Label)
         except Exception:
@@ -346,7 +407,17 @@ class DependencyScannerBlock(ToolBlock):
         if not self._ui_details:
             return super()._render_result_output()
         if not self._expanded:
-            return super()._render_result_output()
+            # Modern collapsed — few lines preview (default collapsed)
+            try:
+                output = self.query_one("#tool-output", Label)
+            except Exception:
+                return
+            output.remove_class("-hidden")
+            output.add_class("-details")
+            self.add_class("-compact")
+            self.remove_class("-with-details")
+            output.update(_collapsed_preview(self._ui_details or ""))
+            return
         try:
             output = self.query_one("#tool-output", Label)
         except Exception:
@@ -408,7 +479,17 @@ class BinaryAnalyzerBlock(ToolBlock):
         if not self._ui_details:
             return super()._render_result_output()
         if not self._expanded:
-            return super()._render_result_output()
+            # Modern collapsed — few lines preview (default collapsed)
+            try:
+                output = self.query_one("#tool-output", Label)
+            except Exception:
+                return
+            output.remove_class("-hidden")
+            output.add_class("-details")
+            self.add_class("-compact")
+            self.remove_class("-with-details")
+            output.update(_collapsed_preview(self._ui_details or ""))
+            return
         try:
             output = self.query_one("#tool-output", Label)
         except Exception:
@@ -478,7 +559,17 @@ class ServiceAnalyzerBlock(ToolBlock):
         if not self._ui_details:
             return super()._render_result_output()
         if not self._expanded:
-            return super()._render_result_output()
+            # Modern collapsed — few lines preview (default collapsed)
+            try:
+                output = self.query_one("#tool-output", Label)
+            except Exception:
+                return
+            output.remove_class("-hidden")
+            output.add_class("-details")
+            self.add_class("-compact")
+            self.remove_class("-with-details")
+            output.update(_collapsed_preview(self._ui_details or ""))
+            return
         try:
             output = self.query_one("#tool-output", Label)
         except Exception:
@@ -537,7 +628,17 @@ class TaintAnalyzerBlock(ToolBlock):
         if not self._ui_details:
             return super()._render_result_output()
         if not self._expanded:
-            return super()._render_result_output()
+            # Modern collapsed — few lines preview (default collapsed)
+            try:
+                output = self.query_one("#tool-output", Label)
+            except Exception:
+                return
+            output.remove_class("-hidden")
+            output.add_class("-details")
+            self.add_class("-compact")
+            self.remove_class("-with-details")
+            output.update(_collapsed_preview(self._ui_details or ""))
+            return
         try:
             output = self.query_one("#tool-output", Label)
         except Exception:
@@ -593,7 +694,17 @@ class CallGraphBlock(ToolBlock):
         if not self._ui_details:
             return super()._render_result_output()
         if not self._expanded:
-            return super()._render_result_output()
+            # Modern collapsed — few lines preview (default collapsed)
+            try:
+                output = self.query_one("#tool-output", Label)
+            except Exception:
+                return
+            output.remove_class("-hidden")
+            output.add_class("-details")
+            self.add_class("-compact")
+            self.remove_class("-with-details")
+            output.update(_collapsed_preview(self._ui_details or ""))
+            return
         try:
             output = self.query_one("#tool-output", Label)
         except Exception:
@@ -645,7 +756,17 @@ class CoverageAnalyzerBlock(ToolBlock):
         if not self._ui_details:
             return super()._render_result_output()
         if not self._expanded:
-            return super()._render_result_output()
+            # Modern collapsed — few lines preview (default collapsed)
+            try:
+                output = self.query_one("#tool-output", Label)
+            except Exception:
+                return
+            output.remove_class("-hidden")
+            output.add_class("-details")
+            self.add_class("-compact")
+            self.remove_class("-with-details")
+            output.update(_collapsed_preview(self._ui_details or ""))
+            return
         try:
             output = self.query_one("#tool-output", Label)
         except Exception:
@@ -702,7 +823,17 @@ class CrashTriagerBlock(ToolBlock):
         if not self._ui_details:
             return super()._render_result_output()
         if not self._expanded:
-            return super()._render_result_output()
+            # Modern collapsed — few lines preview (default collapsed)
+            try:
+                output = self.query_one("#tool-output", Label)
+            except Exception:
+                return
+            output.remove_class("-hidden")
+            output.add_class("-details")
+            self.add_class("-compact")
+            self.remove_class("-with-details")
+            output.update(_collapsed_preview(self._ui_details or ""))
+            return
         try:
             output = self.query_one("#tool-output", Label)
         except Exception:
@@ -773,7 +904,17 @@ class FuzzHarnessBlock(ToolBlock):
         if not self._ui_details:
             return super()._render_result_output()
         if not self._expanded:
-            return super()._render_result_output()
+            # Modern collapsed — few lines preview (default collapsed)
+            try:
+                output = self.query_one("#tool-output", Label)
+            except Exception:
+                return
+            output.remove_class("-hidden")
+            output.add_class("-details")
+            self.add_class("-compact")
+            self.remove_class("-with-details")
+            output.update(_collapsed_preview(self._ui_details or ""))
+            return
         try:
             output = self.query_one("#tool-output", Label)
         except Exception:
@@ -834,7 +975,17 @@ class _ArtifactBlock(ToolBlock):
         if not self._ui_details:
             return super()._render_result_output()
         if not self._expanded:
-            return super()._render_result_output()
+            # Modern collapsed — few lines preview (default collapsed)
+            try:
+                output = self.query_one("#tool-output", Label)
+            except Exception:
+                return
+            output.remove_class("-hidden")
+            output.add_class("-details")
+            self.add_class("-compact")
+            self.remove_class("-with-details")
+            output.update(_collapsed_preview(self._ui_details or ""))
+            return
         try:
             output = self.query_one("#tool-output", Label)
         except Exception:
@@ -908,7 +1059,17 @@ class PatchApplyBlock(ToolBlock):
         if not self._ui_details:
             return super()._render_result_output()
         if not self._expanded:
-            return super()._render_result_output()
+            # Modern collapsed — few lines preview (default collapsed)
+            try:
+                output = self.query_one("#tool-output", Label)
+            except Exception:
+                return
+            output.remove_class("-hidden")
+            output.add_class("-details")
+            self.add_class("-compact")
+            self.remove_class("-with-details")
+            output.update(_collapsed_preview(self._ui_details or ""))
+            return
         try:
             output = self.query_one("#tool-output", Label)
         except Exception:
@@ -969,8 +1130,19 @@ class ExploitFeasibilityBlock(ToolBlock):
         return result
 
     def _render_result_output(self) -> None:
-        if not self._ui_details or not self._expanded:
+        if not self._ui_details:
             return super()._render_result_output()
+        if not self._expanded:
+            try:
+                output = self.query_one("#tool-output", Label)
+            except Exception:
+                return
+            output.remove_class("-hidden")
+            output.add_class("-details")
+            self.add_class("-compact")
+            self.remove_class("-with-details")
+            output.update(_collapsed_preview(self._ui_details or ""))
+            return
         try:
             output = self.query_one("#tool-output", Label)
         except Exception:
@@ -1014,8 +1186,19 @@ class WebScannerBlock(ToolBlock):
         return result
 
     def _render_result_output(self) -> None:
-        if not self._ui_details or not self._expanded:
+        if not self._ui_details:
             return super()._render_result_output()
+        if not self._expanded:
+            try:
+                output = self.query_one("#tool-output", Label)
+            except Exception:
+                return
+            output.remove_class("-hidden")
+            output.add_class("-details")
+            self.add_class("-compact")
+            self.remove_class("-with-details")
+            output.update(_collapsed_preview(self._ui_details or ""))
+            return
         try:
             output = self.query_one("#tool-output", Label)
         except Exception:
@@ -1057,8 +1240,19 @@ class AttackSurfaceBlock(ToolBlock):
         return result
 
     def _render_result_output(self) -> None:
-        if not self._ui_details or not self._expanded:
+        if not self._ui_details:
             return super()._render_result_output()
+        if not self._expanded:
+            try:
+                output = self.query_one("#tool-output", Label)
+            except Exception:
+                return
+            output.remove_class("-hidden")
+            output.add_class("-details")
+            self.add_class("-compact")
+            self.remove_class("-with-details")
+            output.update(_collapsed_preview(self._ui_details or ""))
+            return
         try:
             output = self.query_one("#tool-output", Label)
         except Exception:
@@ -1096,8 +1290,19 @@ class UnifiedScanBlock(ToolBlock):
         return result
 
     def _render_result_output(self) -> None:
-        if not self._ui_details or not self._expanded:
+        if not self._ui_details:
             return super()._render_result_output()
+        if not self._expanded:
+            try:
+                output = self.query_one("#tool-output", Label)
+            except Exception:
+                return
+            output.remove_class("-hidden")
+            output.add_class("-details")
+            self.add_class("-compact")
+            self.remove_class("-with-details")
+            output.update(_collapsed_preview(self._ui_details or ""))
+            return
         try:
             output = self.query_one("#tool-output", Label)
         except Exception:
@@ -1141,8 +1346,19 @@ class OffensiveChainBlock(ToolBlock):
         return result
 
     def _render_result_output(self) -> None:
-        if not self._ui_details or not self._expanded:
+        if not self._ui_details:
             return super()._render_result_output()
+        if not self._expanded:
+            try:
+                output = self.query_one("#tool-output", Label)
+            except Exception:
+                return
+            output.remove_class("-hidden")
+            output.add_class("-details")
+            self.add_class("-compact")
+            self.remove_class("-with-details")
+            output.update(_collapsed_preview(self._ui_details or ""))
+            return
         try:
             output = self.query_one("#tool-output", Label)
         except Exception:

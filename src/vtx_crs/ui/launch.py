@@ -76,7 +76,10 @@ def _print_exit_message(
     if session_id:
         info_lines.append(
             f"[{colors.muted}]To resume:[/{colors.muted}] "
-            f"[{colors.accent}]vtx-crs -r {session_id}[/{colors.accent}]"
+            f"[{colors.accent}]vtx-crs --resume {session_id}[/{colors.accent}]"
+        )
+        info_lines.append(
+            f"[{colors.dim}]  or: vtx-crs -c  (continue last)[/]"
         )
 
     if not info_lines:

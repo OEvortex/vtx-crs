@@ -21,7 +21,7 @@ readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
     "anthropic>=0.120.2",
-    "vtx-coding-agent",
+    "vtx-coding-agent>=1.1.1",
 ]
 
 [dependency-groups]

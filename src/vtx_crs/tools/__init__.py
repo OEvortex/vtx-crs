@@ -75,7 +75,7 @@ tools_by_name = {tool.name: tool for tool in all_tools}
 
 DEFAULT_TOOLS = [tool.name for tool in all_tools]
 
-DENIED_TOOLS: set[str] = set()
+DENIED_TOOLS: set[str] = {"edit", "write", "skill"}
 
 
 def get_tools(names: list[str]) -> list[BaseTool]:
@@ -138,6 +138,7 @@ def register_with_vtx() -> None:
     for name in DEFAULT_TOOLS:
         if name not in merged_defaults:
             merged_defaults.append(name)
+    merged_defaults = [name for name in merged_defaults if name not in DENIED_TOOLS]
     vtx_tools.DEFAULT_TOOLS = merged_defaults
     vtx_app.DEFAULT_TOOLS = merged_defaults
 

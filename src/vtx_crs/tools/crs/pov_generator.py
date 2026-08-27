@@ -27,28 +27,29 @@ from ._common import resolve_repo_path
 _case_manager = get_case_manager()
 
 
+from pydantic import BaseModel, Field
+
+
 class PovGenerateParams(BaseModel):
-    repo_path: str = ""
-    target_file: str = ""
-    crash_input: str = ""
-    crash_input_file: str = ""
-    output_dir: str = ""
-    poc_type: str = "python"
+    repo_path: str = Field(default="", description="Base repository path.")
+    target_file: str = Field(default="", description="Path to target module or script to invoke.")
+    crash_input: str = Field(default="", description="String or base64 payload that triggers the bug.")
+    crash_input_file: str = Field(default="", description="Path to file containing raw exploit payload.")
+    output_dir: str = Field(default="", description="Directory where reproducible PoC script will be saved.")
+    poc_type: str = Field(default="python", description="Format/language for PoC: 'python' | 'c' | 'rust'.")
 
 
 class PovGeneratorTool(BaseTool[PovGenerateParams]):
     name = "pov_generate"
     description = (
-        "Generate a proof-of-concept (PoC) for a crash or taint flow. "
-        "Writes a minimal reproducer to disk that demonstrates the bug with "
-        "the provided crash input."
+        "Proof-of-Vulnerability Generator (Phase 2): Generates minimal, standalone, reproducible PoC scripts "
+        "demonstrating vulnerability triggers in-process or via subprocess. Safe and non-destructive."
     )
     params = PovGenerateParams
     mutating = True
     prompt_guidelines = (
-        "Run pov_generate after crash_triage or taint_analyze.",
-        "Keep the PoC minimal and non-destructive; avoid network/system side effects.",
-        "Use patch_validate to ensure the PoC still triggers after patching (expect failure).",
+        "Use pov_generate to produce the verification artifact for security_validate.",
+        "Ensure PoCs are non-destructive and self-contained.",
     )
 
     async def execute(

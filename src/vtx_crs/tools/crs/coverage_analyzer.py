@@ -28,26 +28,27 @@ from ._common import MAX_FILE_BYTES, iter_source_files, resolve_repo_path
 _case_manager = get_case_manager()
 
 
+from pydantic import BaseModel, Field
+
+
 class CoverageAnalyzeParams(BaseModel):
-    repo_path: str = ""
-    coverage_file: str = ""
-    test_command: str = "pytest --cov --cov-report=term-missing"
-    include_exts: list[str] = [".py", ".js", ".ts", ".go", ".rs"]
+    repo_path: str = Field(default="", description="Absolute path to target repository root.")
+    coverage_file: str = Field(default="", description="Path to existing coverage report file (coverage.json, coverage.xml, lcov.info).")
+    test_command: str = Field(default="pytest --cov --cov-report=term-missing", description="Test command to run for coverage generation.")
+    include_exts: list[str] = Field(default=[".py", ".js", ".ts", ".go", ".rs"], description="Source file extensions to measure.")
 
 
 class CoverageAnalyzerTool(BaseTool[CoverageAnalyzeParams]):
     name = "coverage_analyze"
     description = (
-        "Analyze code coverage to find untested lines, functions, and files. "
-        "If a coverage report is provided, it is parsed directly. Otherwise, "
-        "the tool suggests how to generate a coverage report for the project."
+        "Test Coverage Gap Analyzer (Phase 1): Identifies untested functions, files, and branch targets. "
+        "Surfaces uncovered sensitive sinks that require dedicated fuzzer/harness development."
     )
     params = CoverageAnalyzeParams
     mutating = False
     prompt_guidelines = (
-        "Run coverage_analyze after build and test_runner pass.",
-        "Use results to prioritize writing PoC harnesses and tests for uncovered sinks.",
-        "If the project has no coverage tooling configured, the tool returns setup guidance.",
+        "Use coverage_analyze to locate sensitive code branches not tested by the test suite.",
+        "Generate harnesses with harness_gen for uncovered high-severity sinks.",
     )
 
     async def execute(

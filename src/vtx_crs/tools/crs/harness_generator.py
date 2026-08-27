@@ -25,28 +25,29 @@ from ._common import resolve_repo_path
 _case_manager = get_case_manager()
 
 
+from pydantic import BaseModel, Field
+
+
 class HarnessGenParams(BaseModel):
-    repo_path: str = ""
-    target_file: str = ""
-    target_function: str = ""
-    language: str = "python"
-    output_path: str = ""
-    poc_type: str = "python"  # python | c | rust
+    repo_path: str = Field(default="", description="Absolute path to target repository root.")
+    target_file: str = Field(default="", description="Path to source file containing the target entry point.")
+    target_function: str = Field(default="", description="Function name to wrap inside the driver/fuzz harness.")
+    language: str = Field(default="python", description="Target programming language: 'python' | 'c' | 'rust' | 'go' | 'js'.")
+    output_path: str = Field(default="", description="Custom output path for generated harness file.")
+    poc_type: str = Field(default="python", description="Target harness type / language format.")
 
 
 class HarnessGeneratorTool(BaseTool[HarnessGenParams]):
     name = "harness_gen"
     description = (
-        "Generate a minimal fuzz/PoC harness for a target function or binary entry "
-        "point. The harness is written to disk and can be built and run under the "
-        "project's fuzzer or test runner."
+        "Driver & Fuzz Harness Generator (Phase 2): Generates standalone driver and fuzzer stubs (supporting LLVMFuzzerTestOneInput "
+        "and language-specific entry points) for a target function or sink. Imports target modules cleanly without stubbing out logic."
     )
     params = HarnessGenParams
     mutating = True
     prompt_guidelines = (
-        "Run harness_gen after vuln_scan or crash_triage to turn a sink into a runnable target.",
-        "Use the harness with build_runner and test_runner to reproduce the issue.",
-        "Iterate: update the harness based on crash output from fuzz_harness.",
+        "Use harness_gen to create executable test drivers for high/critical sinks that need dynamic proof.",
+        "Pass generated harnesses to dynamic_analyze or fuzz_target to verify crashes or logic bugs.",
     )
 
     async def execute(

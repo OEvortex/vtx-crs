@@ -60,30 +60,31 @@ PARSERS: dict[str, str] = {
 _REQ_LINE = re.compile(r"^\s*([A-Za-z0-9_.\-]+)\s*(?:==|>=|<=|~=|!=|<|>)\s*([0-9][0-9A-Za-z.\-]*)")
 
 
+from pydantic import BaseModel, Field
+
+
 class DependencyScanParams(BaseModel):
-    repo_path: str = ""
-    ecosystems: list[str] = []  # empty = auto-detect
-    save_findings: bool = True
-    timeout_seconds: int = 30
-    enrich_kev_epss: bool = True  # free CISA KEV + EPSS enrichment
-    run_local_audit: bool = True  # try pip-audit / npm audit if installed (open-source)
+    repo_path: str = Field(default="", description="Absolute path to target repository root.")
+    ecosystems: list[str] = Field(default_factory=list, description="Target package ecosystems (e.g. ['PyPI', 'npm', 'crates.io', 'Go']). Empty auto-detects from manifest files.")
+    save_findings: bool = Field(default=True, description="Whether to persist discovered CVE/GHSA findings into active case ledger.")
+    timeout_seconds: int = Field(default=30, description="Network timeout in seconds for OSV batch queries.")
+    enrich_kev_epss: bool = Field(default=True, description="Enrich with CISA Known Exploited Vulnerabilities (KEV) and FIRST EPSS exploit probabilities.")
+    run_local_audit: bool = Field(default=True, description="Execute local package auditors (pip-audit, npm audit, cargo audit) if available.")
 
 
 class DependencyScannerTool(BaseTool[DependencyScanParams]):
     name = "dependency_scan"
     description = (
-        "OP dependency scan: multi-source keyless intel — OSV (primary, covers GHSA/NVD) + "
-        "CISA KEV exploited flag + FIRST EPSS exploit probability + local pip-audit/npm-audit "
-        "if installed. Parses requirements.txt, pyproject.toml, poetry.lock, Pipfile.lock, "
-        "package.json, yarn.lock, pnpm-lock.yaml, Cargo.toml/lock, go.mod. Returns CVE/OSV ids, "
-        "CVSS, KEV/EPSS, and fixed versions. No API key needed."
+        "Multi-Source Dependency Intelligence Engine (Phase 1): Audits project manifests across Python, JS/TS, Rust, and Go. "
+        "Batch-queries OSV for CVE/GHSA mappings, enriched with CISA KEV (actively exploited in the wild) and FIRST EPSS scores. "
+        "Provides precise fixed versions. Keyless and open-source."
     )
     params = DependencyScanParams
     mutating = False
     prompt_guidelines = (
-        "Run dependency_scan right after repo_analyze — it is keyless and fast via OSV batch.",
-        "Prioritize KEV=true or EPSS>0.5 findings first (exploited in wild). Use fixed_version in patches.",
-        "If pip-audit or npm audit is installed, local audit results are merged automatically for defense-in-depth.",
+        "Run dependency_scan immediately after repo_analyze for keyless supply-chain intelligence.",
+        "Prioritize vulnerabilities with KEV=True or EPSS > 0.5 as P0 critical items for immediate patching.",
+        "Use returned fixed_version strings when formulating manifest version bump patches.",
     )
 
     async def execute(

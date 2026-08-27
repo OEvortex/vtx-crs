@@ -61,24 +61,26 @@ def detect_test_command(repo) -> str | None:
     return None
 
 
+from pydantic import BaseModel, Field
+
+
 class TestRunParams(BaseModel):
-    repo_path: str = ""
-    command: str = ""
-    timeout_seconds: int = 900
+    repo_path: str = Field(default="", description="Target repository root path.")
+    command: str = Field(default="", description="Explicit test suite command. If empty, auto-detects (pytest, cargo test, npm test, go test).")
+    timeout_seconds: int = Field(default=900, description="Test suite execution timeout in seconds.")
 
 
 class TestRunnerTool(BaseTool[TestRunParams]):
     name = "run_tests"
     description = (
-        "Run the project's regression test suite. Auto-detects the test command (pytest, cargo "
-        "test, npm test, go test, make test) or accepts an explicit command. Summarizes "
-        "passed/failed counts and exit code."
+        "Regression Test Suite Runner (Phase 4): Executes the codebase's existing unit/integration test suite. "
+        "Summarizes passed/failed test counts and ensures no functionality regression occurred due to patches."
     )
     params = TestRunParams
     mutating = False
     prompt_guidelines = (
-        "Run tests after a successful build. Any regression caused by a patch must be fixed before proceeding.",
-        "Use the summary counts to prove regression status in the final report.",
+        "Run tests following a successful build to verify that no functional regression was introduced.",
+        "Fix any test regressions prior to marking a patch as complete.",
     )
 
     async def execute(

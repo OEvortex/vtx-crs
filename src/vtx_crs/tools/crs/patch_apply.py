@@ -26,26 +26,30 @@ from ._common import resolve_repo_path
 _case_manager = get_case_manager()
 
 
+from pydantic import BaseModel, Field
+
+
 class PatchApplyParams(BaseModel):
-    diff: str
-    repo_path: str = ""
-    finding_ids: list[str] = []
-    summary: str = ""
-    dry_run: bool = False
+    diff: str = Field(..., description="Unified diff formatted patch (--- / +++ / @@ hunks).")
+    repo_path: str = Field(default="", description="Target repository root path.")
+    finding_ids: list[str] = Field(default_factory=list, description="IDs of vulnerability findings resolved by this patch.")
+    summary: str = Field(default="", description="Short explanation of the fix mechanism.")
+    dry_run: bool = Field(default=False, description="If True, tests if patch applies cleanly without writing changes to disk.")
 
 
 class PatchApplyTool(BaseTool[PatchApplyParams]):
     name = "patch_apply"
     description = (
-        "Apply a unified diff (git diff format) to the repository with validation. Records the "
-        "patch and marks the referenced findings as patched. Use dry_run=true to validate first."
+        "Surgical Patch Application Engine (Phase 3): Applies unified diffs to the repository. "
+        "Associates the patch with specific finding IDs and updates their status in the case ledger. "
+        "Supports dry_run to verify diff context before committing."
     )
     params = PatchApplyParams
     mutating = True
     prompt_guidelines = (
-        "Always validate with dry_run=true before applying a real patch.",
-        "Pass the finding_ids this patch fixes so the case tracks the remediation.",
-        "If application fails, fix the diff context and retry — do not hand-edit files around it.",
+        "Always execute patch_apply with dry_run=True first to verify hunk context.",
+        "Pass finding_ids to ensure remediation tracking is persisted to the active case.",
+        "If application fails due to line drift, inspect the target file lines and adjust @@ header context.",
     )
 
     async def execute(

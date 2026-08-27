@@ -27,29 +27,30 @@ from ._common import resolve_repo_path
 _case_manager = get_case_manager()
 
 
+from pydantic import BaseModel, Field
+
+
 class FuzzParams(BaseModel):
-    target_command: str
-    repo_path: str = ""
-    seed_input: str = ""
-    iterations: int = 100
-    timeout_seconds: int = 10
-    fuzzer: str = "auto"  # "auto" | "radamsa" | "afl" | "python"
-    corpus_dir: str = ""
+    target_command: str = Field(..., description="Target executable or driver script to fuzz.")
+    repo_path: str = Field(default="", description="Base repository or working directory path.")
+    seed_input: str = Field(default="", description="Initial valid input payload to mutate during fuzzing.")
+    iterations: int = Field(default=100, description="Number of mutation iterations to run.")
+    timeout_seconds: int = Field(default=10, description="Per-execution timeout in seconds.")
+    fuzzer: str = Field(default="auto", description="Fuzzing engine: 'auto' | 'radamsa' | 'afl' | 'python'.")
+    corpus_dir: str = Field(default="", description="Optional directory storing seed input corpus.")
 
 
 class FuzzHarnessTool(BaseTool[FuzzParams]):
     name = "fuzz_target"
     description = (
-        "Run a fuzzing campaign against a command or binary. Supports Radamsa, AFL++, "
-        "or a built-in Python mutator. Monitors for crashes, hangs, and abnormal exits. "
-        "Returns crash inputs and stack traces for triage."
+        "Mutation Fuzzing Engine (Phase 2): Drives input mutation campaigns (Radamsa, AFL++, or built-in Python mutators) "
+        "against binaries or parser harnesses. Detects signals, abnormal terminations, and crash-inducing inputs."
     )
     params = FuzzParams
     mutating = False
     prompt_guidelines = (
-        "Use fuzz_target to discover crashes in binaries or parsers without source code.",
-        "Provide a seed input that exercises the target parser/handler.",
-        "If crashes are found, examine the crash input with binary_analyze or dynamic_analyze.",
+        "Use fuzz_target to discover edge-case inputs that crash parsers or handlers.",
+        "Pass any resulting crash directly to offensive_chain or crash_triage for classification.",
     )
 
     async def execute(

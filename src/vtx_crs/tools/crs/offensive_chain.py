@@ -25,29 +25,32 @@ from ._common import resolve_repo_path
 _case_manager = get_case_manager()
 
 
+from pydantic import BaseModel, Field
+
+
 class OffensiveChainParams(BaseModel):
-    repo_path: str = ""
-    binary_path: str = ""
-    crash_file: str = ""
-    crash_text: str = ""
-    vuln_type: str = ""
-    generate_pov: bool = True
-    pov_type: str = "python"
+    repo_path: str = Field(default="", description="Base repository path.")
+    binary_path: str = Field(default="", description="Target compiled binary path (if evaluating binary protections).")
+    crash_file: str = Field(default="", description="Path to file containing crash output or raw input payload.")
+    crash_text: str = Field(default="", description="Verbatim crash stack trace or error log.")
+    vuln_type: str = Field(default="", description="Vulnerability type (e.g. 'buffer-overflow', 'command-injection').")
+    generate_pov: bool = Field(default=True, description="Whether to automatically construct reproducible PoC script.")
+    pov_type: str = Field(default="python", description="Language format for PoC: 'python' | 'c' | 'rust'.")
 
 
 class OffensiveChainTool(BaseTool[OffensiveChainParams]):
     name = "offensive_chain"
     description = (
-        "OP merged offensive proof: runs crash_triage -> exploit_feasibility (mitigation matrix) -> pov_generate "
-        "in one call. Provide crash_file or crash_text + optional binary_path. Use instead of calling "
-        "crash_triage, exploit_feasibility, and pov_generate separately — 3x faster. Free, no key."
+        "High-Performance Merged Offensive Engine (Phase 2): Chains crash_triage -> exploit_feasibility (mitigation matrix) "
+        "-> pov_generate into a single call. Transforms a raw crash or fault log into a verified feasibility assessment "
+        "and reproducible PoC. Always prefer over calling the 3 sub-tools separately."
     )
     params = OffensiveChainParams
     mutating = True
     prompt_guidelines = (
-        "Use offensive_chain right after fuzz_target/dynamic_analyze finds a crash — it classifies, checks feasibility, and builds a PoC in one go.",
-        "Provide binary_path for accurate hardening verdict (NX/PIE/RELRO/canary/FORTIFY).",
-        "If vuln_type is known (e.g., buffer-overflow), pass it for precise chain_breaks.",
+        "Use offensive_chain immediately whenever a crash is detected by fuzzing or runtime testing.",
+        "Pass binary_path when testing native binaries to evaluate NX/PIE/Canary/FORTIFY mitigations.",
+        "Use generated PoC directly in security_validate after applying the fix.",
     )
 
     async def execute(self, params: OffensiveChainParams, cancel_event: asyncio.Event | None = None) -> ToolResult:

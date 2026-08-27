@@ -26,30 +26,29 @@ from ._common import resolve_repo_path
 _case_manager = get_case_manager()
 
 
+from pydantic import BaseModel, Field
+
+
 class DynamicAnalyzeParams(BaseModel):
-    command: str
-    repo_path: str = ""
-    timeout_seconds: int = 30
-    strace: bool = True
-    ltrace: bool = False
-    env: dict[str, str] = {}
+    command: str = Field(..., description="Command string or script to execute under dynamic instrumentation.")
+    repo_path: str = Field(default="", description="Base repository or working directory path.")
+    timeout_seconds: int = Field(default=30, description="Execution timeout in seconds.")
+    strace: bool = Field(default=True, description="Enable strace syscall tracing (monitors execve, openat, mprotect, socket, etc.).")
+    ltrace: bool = Field(default=False, description="Enable ltrace library call tracing.")
+    env: dict[str, str] = Field(default_factory=dict, description="Custom environment variables for execution.")
 
 
 class DynamicAnalyzerTool(BaseTool[DynamicAnalyzeParams]):
     name = "dynamic_analyze"
     description = (
-        "Run a command under dynamic analysis instrumentation: strace (syscalls), "
-        "ltrace (library calls), and crash/timeout monitoring. Use this to observe "
-        "runtime behavior, detect crashes, and identify interesting syscalls "
-        "(open, execve, socket, connect, etc.)."
+        "Dynamic Syscall & Runtime Tracer (Phase 2): Executes commands under strace/ltrace monitoring. "
+        "Captures syscall traces, abnormal exit codes, segfaults/signals, and unauthorized file/network/process operations."
     )
     params = DynamicAnalyzeParams
     mutating = False
     prompt_guidelines = (
-        "Use dynamic_analyze to observe runtime behavior of binaries or scripts.",
-        "Look for crashes (segfault, abort), dangerous syscalls (execve, mprotect), "
-        "and file/network access patterns.",
-        "Combine with binary_analyze to correlate static symbols with runtime calls.",
+        "Use dynamic_analyze to monitor actual runtime behavior (e.g. verifying if a command injection triggers an execve syscall).",
+        "Inspect captured dangerous syscalls (execve, mprotect, connect) and crash signals (SIGSEGV, SIGABRT).",
     )
 
     async def execute(

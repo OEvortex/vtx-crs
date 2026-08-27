@@ -22,24 +22,27 @@ from ._common import resolve_repo_path
 _case_manager = get_case_manager()
 
 
+from pydantic import BaseModel, Field
+
+
 class ReportGenParams(BaseModel):
-    repo_path: str = ""
-    output_dir: str = ""
-    executive_summary: str = ""
+    repo_path: str = Field(default="", description="Base repository path.")
+    output_dir: str = Field(default="", description="Directory to export report artifacts (.vtx_crs/reports/{case_id} default).")
+    executive_summary: str = Field(default="", description="Concise executive summary of vulnerabilities discovered and verified remediations.")
 
 
 class ReportGeneratorTool(BaseTool[ReportGenParams]):
     name = "generate_report"
     description = (
-        "Generate the final professional security report (Markdown + JSON) from the active case: "
-        "executive summary, scope & methodology, findings, patches, build/test results, security "
-        "validation evidence, and conclusion. Returns the written file paths."
+        "Comprehensive Report Generator (Phase 4): Exports complete, auditable security reports in Markdown and JSON. "
+        "Aggregates executive summary, threat model, finding catalog (CWE, severity, file:line, PoC verdict), "
+        "applied patches, and validation proof."
     )
     params = ReportGenParams
     mutating = True
     prompt_guidelines = (
-        "Call generate_report as the final step of the pipeline, after validation.",
-        "Write a short executive_summary describing the engagement outcome for the report.",
+        "Call generate_report as the final step of the engagement after all validations pass.",
+        "Provide a concise, factual executive_summary summarizing findings and fixes.",
     )
 
     async def execute(

@@ -12,6 +12,8 @@ from pathlib import Path
 
 from pydantic import BaseModel
 from vtx.core.types import ToolResult
+from pydantic import BaseModel, Field
+from vtx.core.types import ToolResult
 try:
     from vtx.coding_agent.tools import BaseTool  # legacy
     from vtx.core.types import ToolResult  # legacy
@@ -26,23 +28,22 @@ _case_manager = get_case_manager()
 
 
 class AttackSurfaceParams(BaseModel):
-    repo_path: str = ""
-    include_trust_boundaries: bool = True
+    repo_path: str = Field(default="", description="Absolute path to target repository root.")
+    include_trust_boundaries: bool = Field(default=True, description="Whether to include trust boundary and authentication gap mappings.")
 
 
 class AttackSurfaceTool(BaseTool[AttackSurfaceParams]):
     name = "attack_surface"
     description = (
-        "Defensive threat-model: map attack surface, trust boundaries, entry points, "
-        "data flows, and crown jewels. Synthesizes repo layout, exposed ports/handlers, "
-        "taint sinks, and auth gaps into a structured report (RAPTOR threat-model style)."
+        "Threat Modeling engine (Phase 0): Maps attack surfaces, unauthenticated endpoints, network listeners, "
+        "data-flow crossings, and crown jewels (DB, secret storage, OS execution). Generates prioritized P0/P1/P2 audit targets."
     )
     params = AttackSurfaceParams
     mutating = False
     prompt_guidelines = (
-        "Run after repo_analyze and before vuln_scan to prioritize high-exposure sinks.",
-        "Use output to drive defensive patching and offensive PoC targeting.",
-        "Combine with taint_analyze for data-flow validation.",
+        "Run attack_surface immediately after repo_analyze to construct the threat model.",
+        "Focus first on P0 targets (unauthenticated public entry points directly reaching sensitive sinks).",
+        "Use mapped entry points to drive parameters for unified_scan and taint_analyze.",
     )
 
     async def execute(self, params: AttackSurfaceParams, cancel_event: asyncio.Event | None = None) -> ToolResult:

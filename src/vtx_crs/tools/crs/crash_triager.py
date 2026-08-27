@@ -27,25 +27,26 @@ from ._common import resolve_repo_path
 _case_manager = get_case_manager()
 
 
+from pydantic import BaseModel, Field
+
+
 class CrashTriageParams(BaseModel):
-    crash_file: str = ""
-    crash_text: str = ""
-    repo_path: str = ""
+    crash_file: str = Field(default="", description="Path to crash log or core dump report file.")
+    crash_text: str = Field(default="", description="Verbatim crash log text (ASan, UBSan, GDB stack trace, segfault output).")
+    repo_path: str = Field(default="", description="Base repository path for source line localization.")
 
 
 class CrashTriagerTool(BaseTool[CrashTriageParams]):
     name = "crash_triage"
     description = (
-        "Classify and localize crash artifacts (sanitizer output, core dumps, "
-        "segfault logs). Extracts crash type, faulting location, and suggested "
-        "remediation."
+        "Crash Artifact Classifier & Root-Cause Localizer (Phase 2): Parses sanitizer logs (ASan, UBSan, MSan), "
+        "segfault backtraces, and core dumps. Extracts faulting function, line number, memory fault type, and crash signals."
     )
     params = CrashTriageParams
     mutating = False
     prompt_guidelines = (
-        "Run crash_triage after a fuzz_harness or test_runner crash.",
-        "Use the faulting location to jump directly to the vulnerable code.",
-        "Confirm the crash is reproducible before patching.",
+        "Run crash_triage on output from fuzzing or dynamic execution.",
+        "Pass output directly into exploit_feasibility to evaluate exploitability under target mitigations.",
     )
 
     async def execute(

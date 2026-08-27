@@ -19,26 +19,31 @@ from vtx_crs.core import get_case_manager
 _case_manager = get_case_manager()
 
 
+from pydantic import BaseModel, Field
+
+
 class CaseManagerParams(BaseModel):
-    action: Literal["create", "switch", "list", "summary", "note", "close"] = "summary"
-    title: str = ""
-    repo_path: str = ""
-    case_id: str = ""
-    note: str = ""
+    action: Literal["create", "switch", "list", "summary", "note", "close"] = Field(
+        default="summary",
+        description="Case lifecycle operation: 'create' (new assessment) | 'switch' (activate case) | 'list' | 'summary' (view active ledger) | 'note' | 'close'."
+    )
+    title: str = Field(default="", description="Human-readable title for the case engagement.")
+    repo_path: str = Field(default="", description="Root repository path attached to the case.")
+    case_id: str = Field(default="", description="Target case ID for switch/close operations.")
+    note: str = Field(default="", description="Audit note text to record in the case timeline.")
 
 
 class CaseManagerTool(BaseTool[CaseManagerParams]):
     name = "case_manager"
     description = (
-        "Manage CRS cases: create a case for a repository analysis, switch between cases, list "
-        "existing cases, add notes, view a summary, or close the active case. Findings, patches, "
-        "and validation results accumulate in the active case."
+        "Case Lifecycle & State Ledger Manager: Tracks the entire audit session across reconnaissance, "
+        "findings, patches, and validation proofs. Automatically persists state across sessions."
     )
     params = CaseManagerParams
     mutating = True
     prompt_guidelines = (
-        "Create a case (with the target repo_path) at the start of an engagement.",
-        "Use summary after each pipeline step to track progress.",
+        "Initialize the case ledger at the start of an engagement using case_manager(action='create', ...).",
+        "Call case_manager(action='summary') between phases to review current finding statuses.",
     )
 
     async def execute(

@@ -55,24 +55,26 @@ def _has_build_script(repo) -> bool:
         return False
 
 
+from pydantic import BaseModel, Field
+
+
 class BuildParams(BaseModel):
-    repo_path: str = ""
-    command: str = ""
-    timeout_seconds: int = 600
+    repo_path: str = Field(default="", description="Target repository root path.")
+    command: str = Field(default="", description="Explicit build command. If empty, auto-detects from project build manifests.")
+    timeout_seconds: int = Field(default=600, description="Build execution timeout in seconds.")
 
 
 class BuildRunnerTool(BaseTool[BuildParams]):
     name = "build_project"
     description = (
-        "Build/install the software in the repository. Auto-detects the build command from the "
-        "project type (pyproject.toml, Cargo.toml, package.json, go.mod, CMake, Makefile) or "
-        "accepts an explicit command. Captures exit code and output."
+        "Project Build Engine (Phase 4): Compiles/builds the target project using auto-detected build systems "
+        "(pyproject.toml, package.json, Cargo.toml, go.mod, CMake, Makefile) or an explicit build command."
     )
     params = BuildParams
     mutating = True
     prompt_guidelines = (
-        "Run build_project after applying patches and before running tests.",
-        "If the build fails, read the output, fix the cause, and re-run.",
+        "Run build_project after patch application to ensure code compiles cleanly.",
+        "Inspect compiler error tails if the build fails, and adjust the patch accordingly.",
     )
 
     async def execute(

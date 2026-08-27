@@ -26,27 +26,27 @@ from ._common import resolve_repo_path
 _case_manager = get_case_manager()
 
 
+from pydantic import BaseModel, Field
+
+
 class MitigationInjectParams(BaseModel):
-    repo_path: str = ""
-    mitigation: str = "stack_canary"  # stack_canary | aslr | nx | fortify | safe_build_wrapper
-    target: str = ""
-    dry_run: bool = False
+    repo_path: str = Field(default="", description="Target repository root path.")
+    mitigation: str = Field(default="stack_canary", description="Mitigation type: 'stack_canary' | 'aslr' | 'nx' | 'fortify' | 'safe_build_wrapper'.")
+    target: str = Field(default="", description="Specific build configuration file or target binary.")
+    dry_run: bool = Field(default=False, description="Preview mitigation changes without modifying files.")
 
 
 class MitigationInjectorTool(BaseTool[MitigationInjectParams]):
     name = "mitigation_inject"
     description = (
-        "Inject a compile-time or runtime mitigation into the project. "
-        "Supported mitigations include stack canaries, ASLR, NX, FORTIFY_SOURCE, "
-        "and safe-build wrappers. Returns the suggested changes for the model to "
-        "apply via patch_apply or manual edits."
+        "Defense-in-Depth Mitigation Injector (Phase 3): Configures and injects compiler/linker hardening flags "
+        "(-fstack-protector-strong, -D_FORTIFY_SOURCE=2, -Wl,-z,relro,-z,now, -pie -fPIE) into build systems."
     )
     params = MitigationInjectParams
     mutating = True
     prompt_guidelines = (
-        "Run mitigation_inject after patch_validate passes to harden the fix.",
-        "Prefer project-native build flags (Makefile, CMake, Cargo.toml).",
-        "Do not introduce mitigations that break existing tests without confirming the break.",
+        "Use mitigation_inject to harden build systems after source-level vulnerabilities are patched.",
+        "Verify that injected flags do not break compilation by running build_project immediately afterward.",
     )
 
     async def execute(

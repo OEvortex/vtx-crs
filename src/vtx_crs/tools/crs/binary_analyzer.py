@@ -24,25 +24,26 @@ from ._common import resolve_repo_path
 _case_manager = get_case_manager()
 
 
+from pydantic import BaseModel, Field
+
+
 class BinaryAnalyzeParams(BaseModel):
-    path: str = ""
-    repo_path: str = ""
-    analysis_type: str = "full"  # "full" | "symbols" | "strings" | "sections" | "imports"
+    path: str = Field(default="", description="Path to binary file to analyze (ELF/PE/Mach-O).")
+    repo_path: str = Field(default="", description="Base repository or working directory path.")
+    analysis_type: str = Field(default="full", description="Analysis mode: 'full' | 'symbols' | 'strings' | 'sections' | 'imports'.")
 
 
 class BinaryAnalyzerTool(BaseTool[BinaryAnalyzeParams]):
     name = "binary_analyze"
     description = (
-        "Static analysis on a binary file (ELF/PE/Mach-O): symbols, imports, exports, "
-        "strings, sections, architecture, and security hardening flags. Use this when "
-        "source code is not available or when analyzing compiled artifacts."
+        "Binary Static & Hardening Inspector (Phase 2): Inspects ELF/PE/Mach-O binaries for symbols, dangerous imports "
+        "(system, gets, strcpy, exec), extracted strings (keys/URLs), and mitigation flags (NX, PIE, RELRO, Stack Canary, FORTIFY)."
     )
     params = BinaryAnalyzeParams
     mutating = False
     prompt_guidelines = (
-        "Call binary_analyze when source code is unavailable or you need to inspect a compiled binary.",
-        "Look for dangerous symbols (system, exec, strcpy, sprintf, gets), missing protections (NX, PIE, RELRO), "
-        "and interesting strings (credentials, URLs, debug messages).",
+        "Use binary_analyze when source code is absent or when auditing compiled native artifacts.",
+        "Check mitigation flags (NX/PIE/RELRO/Canary) to determine binary exploit feasibility.",
     )
 
     async def execute(

@@ -106,26 +106,27 @@ _STRUCTURAL_RULES: list[dict[str, Any]] = [
 ]
 
 
+from pydantic import BaseModel, Field
+
+
 class SastScanParams(BaseModel):
-    repo_path: str = ""
-    min_severity: str = "info"
-    include_exts: list[str] = []
-    save_findings: bool = True
+    repo_path: str = Field(default="", description="Absolute path to target repository root.")
+    min_severity: str = Field(default="info", description="Minimum finding severity threshold: 'info' | 'low' | 'medium' | 'high' | 'critical'.")
+    include_exts: list[str] = Field(default_factory=list, description="Optional file extension filter. Empty scans all supported files.")
+    save_findings: bool = Field(default=True, description="Whether to persist discovered findings into active case ledger.")
 
 
 class SastScannerTool(BaseTool[SastScanParams]):
     name = "sast_scan"
     description = (
-        "Run structural static analysis: control-flow and data-flow checks beyond "
-        "simple pattern matching. Surfaces unauthenticated routes, hardcoded binds, "
-        "insecure deserialization, and command injection entry points."
+        "Structural SAST Scanner (Phase 1 Granular): Inspects control-flow and architectural security posture "
+        "(unauthenticated routes, exposed network binds, deserialization sinks, SSRF vectors). Note: unified_scan includes SAST."
     )
     params = SastScanParams
     mutating = False
     prompt_guidelines = (
-        "Run sast_scan after vuln_scan to add structural context.",
-        "Treat every hit as a candidate; confirm by reading the surrounding handler/auth code.",
-        "Focus on routes and public entry points first.",
+        "Use sast_scan for granular structural checks or when validating control-flow fixes.",
+        "Combine structural findings with attack_surface to prioritize externally exposed endpoints.",
     )
 
     async def execute(

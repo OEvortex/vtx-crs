@@ -27,26 +27,28 @@ from .patch_apply import PatchApplyParams, PatchApplyTool
 _case_manager = get_case_manager()
 
 
+from pydantic import BaseModel, Field
+
+
 class PatchValidateParams(BaseModel):
-    repo_path: str = ""
-    patch_file: str = ""
-    build_command: str = "python -m compileall -q ."
-    test_command: str = ""
-    strict_tests: bool = True
+    repo_path: str = Field(default="", description="Base repository path.")
+    patch_file: str = Field(default="", description="Path to patch diff file to validate.")
+    build_command: str = Field(default="python -m compileall -q .", description="Build command to execute inside the isolated sandbox.")
+    test_command: str = Field(default="", description="Regression test command to execute inside the isolated sandbox.")
+    strict_tests: bool = Field(default=True, description="Fail validation if any existing unit tests fail.")
 
 
 class PatchValidatorTool(BaseTool[PatchValidateParams]):
     name = "patch_validate"
     description = (
-        "Validate a patch by applying it, building the project, and running tests. "
-        "Returns build/test pass/fail status and captured output for triage."
+        "Hermetic Patch Sandbox Validator (Phase 4): Applies a patch in an isolated temporary clone of the codebase "
+        "and executes the project's build and test suites to verify that the fix builds cleanly without introducing regressions."
     )
     params = PatchValidateParams
     mutating = True
     prompt_guidelines = (
-        "Run patch_validate after patch_apply to ensure the fix compiles and tests pass.",
-        "Use build_command and test_command from the project's own tooling (Makefile, package.json, pyproject.toml).",
-        "If tests fail, read the failure output and refine the patch.",
+        "Run patch_validate to verify patches in complete isolation prior to final acceptance.",
+        "Ensure build and test commands align with the project's native tooling.",
     )
 
     async def execute(

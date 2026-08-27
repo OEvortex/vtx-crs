@@ -282,29 +282,31 @@ _EXT_LANGUAGE = {
 }
 
 
+from pydantic import BaseModel, Field
+
+
 class VulnScanParams(BaseModel):
-    repo_path: str = ""
-    min_severity: str = "info"  # info | low | medium | high | critical
-    include_exts: list[str] = []
-    save_findings: bool = True
-    use_external_engines: bool = True  # semgrep/bandit/gitleaks if installed (free, open-source)
-    external_timeout: int = 60
+    repo_path: str = Field(default="", description="Absolute path to target repository root.")
+    min_severity: str = Field(default="info", description="Minimum finding severity threshold: 'info' | 'low' | 'medium' | 'high' | 'critical'.")
+    include_exts: list[str] = Field(default_factory=list, description="Optional file extension filter (e.g. ['.py', '.js']). Empty scans all supported files.")
+    save_findings: bool = Field(default=True, description="Whether to persist discovered findings into active case ledger.")
+    use_external_engines: bool = Field(default=True, description="Enable keyless external CLI scanners (semgrep/bandit/gitleaks) if present.")
+    external_timeout: int = Field(default=60, description="Timeout in seconds for external scanner execution.")
 
 
 class VulnScannerTool(BaseTool[VulnScanParams]):
     name = "vuln_scan"
     description = (
-        "Run CWE-mapped static pattern analysis over the repository source code to discover "
-        "candidate security vulnerabilities (command injection, SQL injection, XSS, path "
-        "traversal, unsafe deserialization, hardcoded secrets, weak crypto, and more). "
-        "Hits are heuristics — confirm each one by reading the code before patching."
+        "Pattern-based Vulnerability Scanner (Phase 1 Granular): Executes CWE-mapped static security pattern analysis "
+        "across supported languages (injection, XSS, traversal, deserialization, hardcoded secrets, weak crypto). "
+        "Note: unified_scan is preferred for full repository scans."
     )
     params = VulnScanParams
     mutating = False
     prompt_guidelines = (
-        "Run vuln_scan after repo_analyze for the initial sweep.",
-        "Confirm every hit by reading the surrounding code — trace the data flow to the sink.",
-        "Pass save_findings=true (default) so findings are recorded in the case for the report.",
+        "Use vuln_scan for focused single-file scans or when unified_scan is unavailable.",
+        "Verify all matches against the actual code context before claiming a vulnerability.",
+        "Keep save_findings=True so findings are recorded in the active case.",
     )
 
     async def execute(

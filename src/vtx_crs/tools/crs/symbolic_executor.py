@@ -27,12 +27,15 @@ from ._common import resolve_repo_path
 _case_manager = get_case_manager()
 
 
+from pydantic import BaseModel, Field
+
+
 class SymbolicExecuteParams(BaseModel):
-    repo_path: str = ""
-    target: str = ""
-    input_file: str = ""
-    max_states: int = 100
-    engine: str = "auto"  # auto | angr | concolic
+    repo_path: str = Field(default="", description="Base repository or working directory path.")
+    target: str = Field(default="", description="Target binary or function to analyze.")
+    input_file: str = Field(default="", description="Initial input file for symbolic exploration.")
+    max_states: int = Field(default=100, description="Maximum number of symbolic exploration states.")
+    engine: str = Field(default="auto", description="Symbolic engine: 'auto' | 'angr' | 'concolic'.")
 
 
 class SymbolicExecutorTool(BaseTool[SymbolicExecuteParams]):
@@ -40,16 +43,14 @@ class SymbolicExecutorTool(BaseTool[SymbolicExecuteParams]):
     # heavy dependencies (angr/z3). The tool selects the best available engine.
     name = "symbolic_execute"
     description = (
-        "Enumerate execution paths through a target binary or function. "
-        "Uses angr if available; otherwise provides a concolic input-mutation "
-        "strategy to generate candidate inputs that reach new code paths."
+        "Symbolic Execution & Path Solver (Phase 2): Explores complex branch constraints using angr (if available) "
+        "or concolic constraint inversion to generate inputs reaching deep execution paths."
     )
     params = SymbolicExecuteParams
     mutating = False
     prompt_guidelines = (
-        "Run symbolic_execute after harness_gen to maximize path coverage.",
-        "Use generated inputs as seeds for fuzz_harness.",
-        "Combine with crash_triage to classify newly discovered paths.",
+        "Use symbolic_execute when a fuzzer gets stuck on strict magic byte checks or branch conditions.",
+        "Feed generated path inputs back into fuzz_target as high-value seeds.",
     )
 
     async def execute(

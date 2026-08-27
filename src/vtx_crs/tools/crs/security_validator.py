@@ -23,27 +23,30 @@ from ._common import resolve_repo_path
 _case_manager = get_case_manager()
 
 
+from pydantic import BaseModel, Field
+
+
 class SecurityValidateParams(BaseModel):
-    repo_path: str = ""
-    command: str
-    expected_exit_code: int | None = None
-    finding_id: str = ""
-    note: str = ""
-    timeout_seconds: int = 300
+    repo_path: str = Field(default="", description="Base repository path.")
+    command: str = Field(..., description="Validation command or PoC script execution command.")
+    expected_exit_code: int | None = Field(default=None, description="Expected process returncode indicating successful mitigation.")
+    finding_id: str = Field(default="", description="ID of finding being validated to record verification in the case ledger.")
+    note: str = Field(default="", description="Contextual note or proof explanation.")
+    timeout_seconds: int = Field(default=300, description="Verification command execution timeout in seconds.")
 
 
 class SecurityValidatorTool(BaseTool[SecurityValidateParams]):
     name = "security_validate"
     description = (
-        "Run a security validation step that proves a vulnerability is fixed: a PoC/exploit "
-        "script that must fail after the patch, a targeted re-scan, or a check command. Compare "
-        "the exit code to an expected value and record the verification in the case."
+        "Dual-Verification Security Prover (Phase 4): Re-executes the offensive PoC against the patched codebase "
+        "to prove that the vulnerability is neutralized (PoC exits cleanly or fails to trigger the sink). "
+        "Records verification proof directly into the case finding."
     )
     params = SecurityValidateParams
     mutating = True
     prompt_guidelines = (
-        "After patching, run security_validate with a command that previously demonstrated the flaw — it must now fail.",
-        "Pass the finding_id to attach the verification result to the finding and its patch.",
+        "Always execute security_validate with the original PoC command to prove the vulnerability is completely resolved.",
+        "Pass finding_id to mark the finding status as FIXED in the case ledger.",
     )
 
     async def execute(

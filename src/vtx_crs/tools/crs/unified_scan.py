@@ -12,7 +12,7 @@ import re
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from vtx.core.types import ToolResult
 try:
     from vtx.coding_agent.tools import BaseTool  # legacy
@@ -31,27 +31,26 @@ _case_manager = get_case_manager()
 
 
 class UnifiedScanParams(BaseModel):
-    repo_path: str = ""
-    min_severity: str = "info"
-    save_findings: bool = True
-    include_taint: bool = True
-    timeout_seconds: int = 90
+    repo_path: str = Field(default="", description="Absolute path to target repository root.")
+    min_severity: str = Field(default="info", description="Minimum finding severity threshold: 'info' | 'low' | 'medium' | 'high' | 'critical'.")
+    save_findings: bool = Field(default=True, description="Whether to automatically persist discovered findings into active case ledger.")
+    include_taint: bool = Field(default=True, description="Whether to include source-to-sink taint analysis in the unified pass.")
+    timeout_seconds: int = Field(default=90, description="Maximum execution timeout for parallel sub-scanners in seconds.")
 
 
 class UnifiedScanTool(BaseTool[UnifiedScanParams]):
     name = "unified_scan"
     description = (
-        "OP merged defensive scan: runs vuln_scan (patterns + free semgrep/bandit/gitleaks) + "
-        "sast_scan + taint_analyze in parallel, dedupes and returns a single prioritized report. "
-        "Use this instead of calling vuln_scan, sast_scan, and taint_analyze separately — 3x faster. "
-        "Free engines auto-detected; no key needed."
+        "High-Performance Merged Defensive Scanner (Phase 1): Executes SAST structural checks, rule patterns (semgrep/bandit/gitleaks "
+        "when available, plus internal regex engines), and taint analysis in parallel. Deduplicates results into a unified finding set. "
+        "Always prefer over running vuln_scan, sast_scan, and taint_analyze separately."
     )
     params = UnifiedScanParams
     mutating = False
     prompt_guidelines = (
-        "Prefer unified_scan over separate vuln_scan/sast_scan/taint_analyze — it is faster and deduped.",
-        "Run unified_scan immediately after attack_surface/repo_analyze for full defensive coverage.",
-        "Every hit still needs code-read confirmation before patching.",
+        "Prefer unified_scan as the primary discovery tool to conserve token context and maximize execution velocity.",
+        "Always keep save_findings=True so findings are recorded in the case ledger.",
+        "Verify candidate findings by reading code context (file:line) before proceeding to patching.",
     )
 
     async def execute(self, params: UnifiedScanParams, cancel_event: asyncio.Event | None = None) -> ToolResult:

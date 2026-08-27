@@ -106,23 +106,26 @@ ENTRY_POINT_PATTERNS = [
 ]
 
 
+from pydantic import BaseModel, Field
+
+
 class RepoAnalyzeParams(BaseModel):
-    repo_path: str = ""
-    depth: int = 2
+    repo_path: str = Field(default="", description="Absolute path to target repository root. If empty, uses active case path.")
+    depth: int = Field(default=2, description="Maximum directory traversal depth for repo layout exploration.")
 
 
 class RepoAnalyzerTool(BaseTool[RepoAnalyzeParams]):
     name = "repo_analyze"
     description = (
-        "Map an unknown source code repository: languages, build system, test framework, "
-        "entry points, directory structure, and size. Call this first to understand a "
-        "new codebase before reading files."
+        "Reconnaissance engine (Phase 0): Maps codebase structure, programming languages, build systems, "
+        "test frameworks, package manifests, and primary entry points. Call first before code inspection."
     )
     params = RepoAnalyzeParams
     mutating = False
     prompt_guidelines = (
-        "Call repo_analyze first on any new target repository.",
-        "After mapping, read the manifest/build files and the entry points listed.",
+        "Always execute repo_analyze as Step 1 on any target repository to establish architectural context.",
+        "Use detected manifest files (e.g. pyproject.toml, package.json) and entry points to guide threat modeling.",
+        "Pass output directly into attack_surface to construct the trust boundary map.",
     )
 
     async def execute(

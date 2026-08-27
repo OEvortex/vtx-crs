@@ -28,25 +28,26 @@ from ._common import MAX_FILE_BYTES, iter_source_files, resolve_repo_path
 _case_manager = get_case_manager()
 
 
+from pydantic import BaseModel, Field
+
+
 class CallGraphParams(BaseModel):
-    repo_path: str = ""
-    max_depth: int = 3
-    include_exts: list[str] = [".py", ".js", ".ts", ".go", ".rs", ".c", ".cpp"]
+    repo_path: str = Field(default="", description="Absolute path to target repository root.")
+    max_depth: int = Field(default=3, description="Maximum call tree exploration depth.")
+    include_exts: list[str] = Field(default=[".py", ".js", ".ts", ".go", ".rs", ".c", ".cpp"], description="Source file extensions to parse.")
 
 
 class CallGraphTool(BaseTool[CallGraphParams]):
     name = "call_graph"
     description = (
-        "Build a heuristic call graph from the repository source. Returns a "
-        "text/mermaid-style dependency map of function calls and imports so "
-        "the model can reason about reachability and data flow."
+        "Call Graph & Reachability Engine (Phase 1): Constructs a function call graph and import dependency map "
+        "to determine if an entry point can reach a vulnerable function or if the code is unreachable dead code."
     )
     params = CallGraphParams
     mutating = False
     prompt_guidelines = (
-        "Run call_graph after repo_analyze to map entry points.",
-        "Use it to find which functions can reach a suspicious sink before patching.",
-        "Combine with taint_analyze to trace untrusted data flow.",
+        "Use call_graph to verify that candidate vulnerabilities in library functions are reachable from public entry points.",
+        "Deprioritize sinks residing in dead or unreachable code paths.",
     )
 
     async def execute(

@@ -41,26 +41,28 @@ _SINK_PATTERNS = {
 }
 
 
+from pydantic import BaseModel, Field
+
+
 class TaintAnalyzeParams(BaseModel):
-    repo_path: str = ""
-    max_findings: int = 50
-    include_exts: list[str] = [".py", ".js", ".ts", ".c", ".cpp"]
-    save_findings: bool = False  # taint is REVIEW by default; set True to persist to case for detailed report
+    repo_path: str = Field(default="", description="Absolute path to target repository root.")
+    max_findings: int = Field(default=50, description="Maximum number of candidate taint flows to return.")
+    include_exts: list[str] = Field(default=[".py", ".js", ".ts", ".c", ".cpp"], description="File extensions to include in taint propagation tracking.")
+    save_findings: bool = Field(default=False, description="Whether to persist taint findings as REVIEW items in the active case.")
 
 
 class TaintAnalyzerTool(BaseTool[TaintAnalyzeParams]):
     name = "taint_analyze"
     description = (
-        "Heuristic taint analysis: find untrusted input sources and trace them "
-        "to dangerous sinks (eval, SQL, shell, file write, deserialization). "
-        "Returns candidate taint flows for the model to confirm by code reading."
+        "AST Source-to-Sink Taint Propagation Engine (Phase 1): Traces untrusted input entry points (HTTP params, "
+        "CLI args, file reads, env vars) through variables/calls into dangerous execution sinks (eval, SQL, shell, file write, pickle)."
     )
     params = TaintAnalyzeParams
     mutating = False
     prompt_guidelines = (
-        "Run taint_analyze after call_graph to prioritize reachable flows.",
-        "Confirm each candidate flow by reading the actual code — do not patch blindly.",
-        "Combine with vuln_scan to correlate pattern hits with taint reachability.",
+        "Use taint_analyze to prove or disprove that untrusted input reaches a suspicious sink.",
+        "A finding is only valid if a clean taint path exists from an untrusted source to an unescaped sink.",
+        "If a sanitization guard or allowlist exists along the path, mark the candidate flow as safe.",
     )
 
     async def execute(

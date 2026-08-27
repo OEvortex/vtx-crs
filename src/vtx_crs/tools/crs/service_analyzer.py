@@ -23,29 +23,31 @@ from ._common import resolve_repo_path
 _case_manager = get_case_manager()
 
 
+from pydantic import BaseModel, Field
+
+
 class ServiceAnalyzeParams(BaseModel):
-    target: str = ""
-    repo_path: str = ""
-    ports: str = (
-        "21,22,23,25,53,80,110,143,443,445,993,995,3306,3389,5432,5900,6379,8080,8443,27017"
+    target: str = Field(default="", description="Target host or IP address to scan (e.g. '127.0.0.1', 'localhost').")
+    repo_path: str = Field(default="", description="Base repository path.")
+    ports: str = Field(
+        default="21,22,23,25,53,80,110,143,443,445,993,995,3306,3389,5432,5900,6379,8080,8443,27017",
+        description="Comma-separated list of TCP port numbers to probe.",
     )
-    timeout_seconds: int = 5
-    mode: str = "connect"  # "connect" | "banner" | "identify"
+    timeout_seconds: int = Field(default=5, description="Per-port socket connection timeout in seconds.")
+    mode: str = Field(default="connect", description="Scan mode: 'connect' | 'banner' | 'identify'.")
 
 
 class ServiceAnalyzerTool(BaseTool[ServiceAnalyzeParams]):
     name = "service_analyze"
     description = (
-        "Network service reconnaissance: connect to TCP ports, grab banners, "
-        "identify service versions, and detect open ports on a target host. "
-        "Use this for black-box analysis of network-exposed services."
+        "Network Service Reconnaissance (Phase 2): Audits TCP ports, grabs service banners, and fingerprints "
+        "daemon versions on local or authorized target systems."
     )
     params = ServiceAnalyzeParams
     mutating = False
     prompt_guidelines = (
-        "Use service_analyze to discover open ports and service versions on a target.",
-        "Combine with dynamic_analyze to send crafted payloads to identified services.",
-        "Be careful: only scan targets you are authorized to test.",
+        "Use service_analyze to audit open ports and running listeners on the target host.",
+        "Strictly adhere to authorization guidelines: only scan authorized local or designated targets.",
     )
 
     async def execute(

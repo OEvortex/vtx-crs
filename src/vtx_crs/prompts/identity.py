@@ -196,6 +196,56 @@ SECURITY_ANALYSIS = """# Security Analysis — Elite Playbook (when to use what,
 - security_validate: Run PoC command, check exit code vs expected (0 means fixed for should-fail PoC). Capture output as evidence. Failure to validate means patch incomplete — loop.
 """
 
+TOOL_ORCHESTRATION = """# DrDio-Level Tool Orchestration — WHEN to call WHAT (strict)
+
+You must select tools deterministically. Never guess. Use this matrix. Call tools with correct repo_path every time.
+
+| Phase | Tool | TRIGGER (when) | Required Params | Returns | Next Tool |
+|-------|------|----------------|-----------------|---------|-----------|
+| 0 Recon | `repo_analyze` | First action, or repo unknown. Always call first. | repo_path | languages, build, tests, entry points | `attack_surface` |
+| 0 Recon | `attack_surface` | Immediately after repo_analyze. Maps threat model. | repo_path | entries, trust boundaries, jewels, auth gaps (P0/P1/P2) | `unified_scan` |
+| 1 Defensive | `unified_scan` | After attack_surface. Merged vuln+sast+taint, OP. Prefer over separate vuln/sast/taint. | repo_path, min_severity, save_findings=true | deduped findings persisted to case (CWE, file:line) | `dependency_scan` |
+| 1 Defensive | `vuln_scan` | Only if unified_scan unavailable, or need granular re-scan of single file. Uses patterns + FREE semgrep/bandit/gitleaks (no key). | repo_path, min_severity, save_findings, use_external_engines | findings + engine counts | `sast_scan` or `taint_analyze` |
+| 1 Defensive | `sast_scan` | After vuln_scan for structural context (auth, binds, SSRF, weak crypto). | repo_path, min_severity | findings | `dependency_scan` |
+| 1 Defensive | `dependency_scan` | Parallel with unified_scan. Batch OSV primary + FREE CISA KEV + EPSS + pip-audit/npm audit. | repo_path, save_findings=true, enrich_kev_epss=true | CVE/GHSA, CVSS, KEV flag, EPSS score, fixed_version | `call_graph` |
+| 1 Defensive | `taint_analyze` | After unified_scan to confirm reachability of high/critical sinks. | repo_path, max_findings | flows (source->sink) | `call_graph` |
+| 1 Defensive | `call_graph` | After taint to see if sink is reachable from entry (dead code = lower priority). | repo_path, max_depth | Python AST + heuristic edges | `coverage_analyze` |
+| 1 Defensive | `coverage_analyze` | After call_graph to find uncovered sinks needing harness. | repo_path, coverage_file | gap table, setup cmds | `harness_gen` |
+| 2 Offensive | `harness_gen` | For each unguarded high/critical sink (needs PoC). Language-aware. | repo_path, target_file, target_function, language, poc_type | harness file path (py/c/rs) with LLVMFuzzerTestOneInput | `fuzz_target` / `dynamic_analyze` |
+| 2 Offensive | `binary_analyze` | When source missing or binary artifact exists. Always check hardening. | path, repo_path | arch, NX/PIE/RELRO/canary/FORTIFY, dangerous symbols, strings | `dynamic_analyze` |
+| 2 Offensive | `dynamic_analyze` | To observe runtime syscalls/crashes under strace. | command, repo_path, strace=true | syscall summary, dangerous calls, crash detection | `fuzz_target` |
+| 2 Offensive | `fuzz_target` | Mutation fuzzing (radamsa/python/AFL). Provide seed. | target_command, seed_input, iterations | crashes (hex, signal, output) | `crash_triage` |
+| 2 Offensive | `symbolic_execute` | For hard branches (angr/concolic 5-strategy). | target, input_file, engine | candidate inputs | `fuzz_target` |
+| 2 Offensive | `service_analyze` | TCP ports on authorized localhost target. | target, ports, mode=connect/banner/identify | open ports + banners | `web_scan` |
+| 2 Offensive | `web_scan` | HTTP target authorized. Crawls + injection canaries. | target_url, crawl_depth, check_injection | pages, forms, tech, XSS/SQLi hits | `crash_triage` |
+| 2 Offensive | `crash_triage` | After any crash/fuzz/sanitizer log. | crash_file/crash_text | crash_type, fault location, signals, remediation | `exploit_feasibility` |
+| 2 Offensive | `exploit_feasibility` | After triage, needs hardening verdict. Provide binary_path. | binary_path, crash_input, vuln_type | verdict (exploitable/likely/constrained/blocked) + chain_breaks + what_would_help | `pov_generate` |
+| 2 Offensive | `pov_generate` | After feasible verdict. Non-weaponized repro. | target_file, crash_input, poc_type | PoC file (py/c/rs) | `offensive_chain` |
+| 2 Offensive | `offensive_chain` | Merged crash->feasibility->PoC (3-in-1). Use after fuzz/dynamic finds crash. | crash_file/text, binary_path, vuln_type | triage + feasibility + PoC in one | `patch_apply` |
+| 3 Fix | `patch_apply` | For each OPEN high/critical (+KEV). Minimal diff, with finding_ids. | diff (unified), finding_ids, dry_run | patch ID, changed_files | `patch_validate` |
+| 3 Fix | `mitigation_inject` | After patches, for missing NX/PIE/RELRO/canary. | repo_path, mitigation, target | wrapper script / guidance | `build_project` |
+| 3 Fix | `patch_validate` | Isolated temp-copy build+test of patch. | repo_path, patch_file, build_command, test_command | build/test pass/fail | `build_project` |
+| 3 Fix | `build_project` | Verify build after patches. Auto-detects. | repo_path, command | exit, tail | `run_tests` |
+| 3 Fix | `run_tests` | Regression check. | repo_path, command | passed/failed | `security_validate` |
+| 3 Fix | `security_validate` | Re-run PoC on patched tree; must exit 0. | command, expected_exit_code, finding_id | verification PASSED/FAILED | `unified_scan` re-scan |
+| 4 Report | `generate_report` | Final step, after all validations. Uses active case. | repo_path, executive_summary | markdown + json paths | `case_manager` summary |
+| Meta | `case_manager` | Manage case lifecycle. Create at start, summary after each phase. | action=create/switch/list/summary/note/close, title, repo_path | case_id, findings count, detailed table | — |
+| Meta | `coverage_analyze` | Already listed. | — | — | — |
+
+Rules:
+- ALWAYS create or switch case at start: `case_manager action=create title="<repo> assessment" repo_path="<abs>"`.
+- ALWAYS persist: save_findings=true for all defensive scans. Offensive chain auto-persists findings.
+- ALWAYS use repo_path absolute (from repo_analyze) in every tool call; never rely on cwd.
+- PREFER merged: `unified_scan` over `vuln_scan`+`sast_scan`+`taint_analyze`; `offensive_chain` over `crash_triage`+`exploit_feasibility`+`pov_generate` unless you need granular control.
+- NEVER patch without taint-confirm + feasibility check (blocked still needs patch but note as defense-in-depth).
+- NEVER skip `patch_validate` + `security_validate` → report is invalid without them.
+- If a tool fails (e.g., semgrep not installed, strace missing), read error, note "engine not found, fallback used", continue — do not abort pipeline.
+- After each phase, call `case_manager action=summary` to verify findings landed (fixes ghost 0-findings bug: repo_path must match case).
+
+Example chain for juice-shop:
+repo_analyze -> attack_surface -> unified_scan (save) + dependency_scan (KEV) -> call_graph -> for each high: harness_gen -> offensive_chain -> patch_apply (finding_ids) -> patch_validate -> build_project -> run_tests -> security_validate -> generate_report
+"""
+
 OUTPUT_STANDARDS = """# Output Standards — What a Professional Report Must Contain
 
 - Executive summary: 3-5 sentences, who, what, risk, fix status.
@@ -246,6 +296,7 @@ def _compose_crs_base() -> str:
             CORE_PRINCIPLES,
             WORKFLOW,
             SECURITY_ANALYSIS,
+            TOOL_ORCHESTRATION,
             OUTPUT_STANDARDS,
             TOOL_USE_RULES,
             AUTHORIZATION,
@@ -262,6 +313,7 @@ __all__ = [
     "DEFAULT_CRS_BASE",
     "OUTPUT_STANDARDS",
     "SECURITY_ANALYSIS",
+    "TOOL_ORCHESTRATION",
     "TOOL_USE_RULES",
     "WORKFLOW",
 ]

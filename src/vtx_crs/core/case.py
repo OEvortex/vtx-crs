@@ -168,38 +168,83 @@ class CaseManager:
             storage_dir = str(Path.home() / ".vtx_crs" / "cases")
         self.storage_dir = Path(storage_dir)
         self.storage_dir.mkdir(parents=True, exist_ok=True)
+        # Persist active case across restarts (fixes ghost 0-findings case)
+        self._active_file = self.storage_dir.parent / "active_case_id"
         self._cases: dict[str, CrsCase] = {}
         self._active_case_id: str | None = None
         self._load_all()
+        # Restore last active case if file exists
+        try:
+            if self._active_file.exists():
+                saved = self._active_file.read_text(encoding="utf-8").strip()
+                if saved and (self.storage_dir / f"{saved}.json").exists():
+                    self._active_case_id = saved
+        except Exception:
+            pass
+
+    def _persist_active(self) -> None:
+        try:
+            if self._active_case_id:
+                self._active_file.write_text(self._active_case_id, encoding="utf-8")
+        except Exception:
+            pass
 
     @property
     def active_case(self) -> CrsCase:
         if self._active_case_id is None or self._active_case_id not in self._cases:
+            # Try to restore from file again (in case another process created a case)
+            try:
+                if self._active_file.exists():
+                    saved = self._active_file.read_text(encoding="utf-8").strip()
+                    if saved and saved in self._cases:
+                        self._active_case_id = saved
+                        return self._cases[self._active_case_id]
+                    # Also try loading from disk if not in memory
+                    loaded = self._load(saved) if saved else None
+                    if loaded:
+                        self._cases[loaded.case_id] = loaded
+                        self._active_case_id = loaded.case_id
+                        return loaded
+            except Exception:
+                pass
+            # If active case is empty and there is a recent case with findings, prefer that (fixes ghost case)
+            if self._cases:
+                with_findings = [c for c in self._cases.values() if c.findings]
+                if with_findings:
+                    best = max(with_findings, key=lambda c: c.updated_at)
+                    self._active_case_id = best.case_id
+                    self._persist_active()
+                    return best
             case = CrsCase()
             self._cases[case.case_id] = case
             self._active_case_id = case.case_id
+            self._persist_active()
         return self._cases[self._active_case_id]
 
     @active_case.setter
     def active_case(self, case: CrsCase) -> None:
         self._cases[case.case_id] = case
         self._active_case_id = case.case_id
+        self._persist_active()
 
     def create_case(self, title: str = "", repo_path: str = "") -> CrsCase:
         case = CrsCase(title=title, repo_path=repo_path)
         self._cases[case.case_id] = case
         self._active_case_id = case.case_id
         self._save(case)
+        self._persist_active()
         return case
 
     def switch_case(self, case_id: str) -> CrsCase | None:
         if case_id in self._cases:
             self._active_case_id = case_id
+            self._persist_active()
             return self._cases[case_id]
         loaded = self._load(case_id)
         if loaded:
             self._cases[loaded.case_id] = loaded
             self._active_case_id = loaded.case_id
+            self._persist_active()
         return loaded
 
     def list_cases(self) -> list[dict[str, Any]]:

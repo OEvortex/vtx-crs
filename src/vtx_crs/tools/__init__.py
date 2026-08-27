@@ -5,7 +5,7 @@ try:
     from vtx.core.types import ToolDefinition
 except (ModuleNotFoundError, ImportError):
     from vtx.tools import BaseTool  # type: ignore
-    from vtx.core.types import ToolDefinition  # type: ignore
+    from vtx.core.types import ToolDefinition
 
 from .crs.attack_surface import AttackSurfaceTool
 from .crs.binary_analyzer import BinaryAnalyzerTool

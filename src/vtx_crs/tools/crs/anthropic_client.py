@@ -27,4 +27,5 @@ class AnthropicClient:
             max_tokens=max_tokens,
             messages=[{"role": "user", "content": prompt}],
         )
-        return message.content[0].text
+        block = message.content[0]
+        return getattr(block, "text", str(block))

@@ -18,7 +18,7 @@ try:
     from vtx.core.types import ToolResult  # legacy
 except (ModuleNotFoundError, ImportError):
     from vtx.tools import BaseTool  # type: ignore
-    from vtx.core.types import ToolResult  # type: ignore
+    from vtx.core.types import ToolResult
 
 from vtx_crs.core import get_case_manager
 
@@ -125,8 +125,8 @@ class PovGeneratorTool(BaseTool[PovGenerateParams]):
                 f"        tf = Path(r\"{target_file}\")\n"
                 f"        if tf.exists() and tf.suffix == '.py':\n"
                 f"            spec = importlib.util.spec_from_file_location('_poc_target', tf)\n"
-                f"            m = importlib.util.module_from_spec(spec)\n"  # type: ignore
-                f"            spec.loader.exec_module(m)  # type: ignore\n"
+                f"            m = importlib.util.module_from_spec(spec)\n"
+                f"            spec.loader.exec_module(m)\n"
                 f"            fn = getattr(m, '{safe_target}', None)\n"
                 f"            if callable(fn):\n"
                 f"                print(f'[PoC] calling {safe_target}({{INPUT!r}})')\n"

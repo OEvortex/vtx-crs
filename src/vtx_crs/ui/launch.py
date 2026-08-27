@@ -13,10 +13,10 @@ try:
 except (ModuleNotFoundError, ImportError):
     import vtx_crs._compat  # noqa: F401
     try:
-        from vtx.config import get_config
-        config = get_config()  # type: ignore
+        from vtx.config import get_config  # type: ignore
+        config = get_config()
     except Exception:
-        from vtx_crs.config import config  # type: ignore
+        from vtx_crs.config import config
 from vtx_crs.tools import register_with_vtx
 from vtx_crs.version import VERSION
 

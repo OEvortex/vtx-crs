@@ -49,7 +49,7 @@ def install_aliases() -> None:
                     import types
                     mod = types.ModuleType(pkg)
                     # mark as package
-                    mod.__path__ = []  # type: ignore
+                    mod.__path__ = []
                     sys.modules[pkg] = mod
                 except Exception:
                     pass

@@ -18,9 +18,9 @@ try:
     from vtx.core.types import ToolResult  # legacy
 except (ModuleNotFoundError, ImportError):
     from vtx.tools import BaseTool  # type: ignore
-    from vtx.core.types import ToolResult  # type: ignore
+    from vtx.core.types import ToolResult
 
-from vtx_crs.core import get_case_manager
+from vtx_crs.core import FindingStatus, Severity, VulnerabilityFinding, get_case_manager
 from ._common import resolve_repo_path
 
 _case_manager = get_case_manager()
@@ -74,7 +74,7 @@ class WebScannerTool(BaseTool[WebScanParams]):
         depth = max(1, min(params.crawl_depth, 3))
         # Try to use httpx/aiohttp; fallback to urllib
         try:
-            import httpx  # type: ignore
+            import httpx
 
             use_httpx = True
         except ImportError:
@@ -119,6 +119,31 @@ class WebScannerTool(BaseTool[WebScanParams]):
             "- Validate path traversal probes with security_validate.",
         ])
         text = "\n".join(lines)
+        # Persist injection hits as findings
+        if 'injection_hits' in locals() and injection_hits:
+            try:
+                _c = _case_manager.active_case
+                if not _c.repo_path:
+                    _c.repo_path = str(repo) if 'repo' in locals() else _c.repo_path
+                for h in injection_hits[:5]:
+                    vf = VulnerabilityFinding(
+                        title=f"Web injection candidate: {h['type']} at {h['url'][:40]}",
+                        description=f"Web scan probe for {h['type']} with payload {h['payload']!r} reflected with signal {h['signal']}",
+                        severity=Severity.HIGH,
+                        cwe_id="CWE-79" if h['type']=='xss' else "CWE-89" if h['type']=='sqli' else "CWE-22",
+                        confidence=0.45,
+                        file_path=h['url'],
+                        evidence=[str(h)],
+                        remediation="Validate injection point; use parameterized queries / escaping / allowlist.",
+                        status=FindingStatus.REVIEW,
+                        source="web_scan",
+                        metadata=h,
+                    )
+                    _c.add_finding(vf)
+                _case_manager.save_active()
+            except Exception:
+                pass
+
         return ToolResult(success=True, result=text, ui_summary=f"Web scan: {len(crawl_results.get('pages', []))} pages, {len(injection_hits)} probe hit(s)", ui_details=text)
 
     def _infer_url(self, repo: Path) -> str | None:
@@ -196,7 +221,7 @@ class WebScannerTool(BaseTool[WebScanParams]):
     async def _fetch(self, url: str, timeout: int, use_httpx: bool) -> str | None:
         if use_httpx:
             try:
-                import httpx  # type: ignore
+                import httpx
 
                 async with httpx.AsyncClient(follow_redirects=True, timeout=timeout) as c:
                     r = await c.get(url)

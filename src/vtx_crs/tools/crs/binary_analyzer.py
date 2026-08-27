@@ -15,9 +15,9 @@ try:
     from vtx.core.types import ToolResult  # legacy
 except (ModuleNotFoundError, ImportError):
     from vtx.tools import BaseTool  # type: ignore
-    from vtx.core.types import ToolResult  # type: ignore
+    from vtx.core.types import ToolResult
 
-from vtx_crs.core import get_case_manager
+from vtx_crs.core import FindingStatus, Severity, VulnerabilityFinding, get_case_manager
 
 from ._common import resolve_repo_path
 
@@ -171,12 +171,37 @@ class BinaryAnalyzerTool(BaseTool[BinaryAnalyzeParams]):
                 sections.append(
                     f"- [{f.get('severity', 'medium').upper()}] {f.get('title')}: {f.get('detail')}"
                 )
+        # Persist binary findings to case so case_manager shows them (fixes ghost 0-findings)
+        if findings:
+            case = _case_manager.active_case
+            if not case.repo_path:
+                try:
+                    case.repo_path = str(target.parent.resolve())
+                except Exception:
+                    pass
+            for f in findings:
+                vf = VulnerabilityFinding(
+                    title=f.get("title", "Binary finding"),
+                    description=f.get("detail", ""),
+                    severity=Severity.from_str(f.get("severity", "medium")),
+                    cwe_id=f.get("cwe", ""),
+                    confidence=0.7,
+                    file_path=str(target),
+                    evidence=[f.get("detail", "")],
+                    remediation="Harden binary: enable missing mitigations, remove dangerous symbols, review strings.",
+                    status=FindingStatus.OPEN,
+                    source="binary_analyze",
+                    metadata={"binary": str(target), "finding": f},
+                )
+                case.add_finding(vf)
+            _case_manager.save_active()
+            sections.append(f"\n_Persisted {len(findings)} binary finding(s) to case {case.case_id}_")
 
         text = "\n".join(sections)
         return ToolResult(
             success=True,
             result=text,
-            ui_summary=f"Analyzed {target.name}: {len(findings)} finding(s)",
+            ui_summary=f"Analyzed {target.name}: {len(findings)} finding(s) -> case {_case_manager.active_case.case_id}",
             ui_details=text,
         )
 
@@ -209,7 +234,10 @@ class BinaryAnalyzerTool(BaseTool[BinaryAnalyzeParams]):
         """Non-blocking wrapper for subprocess (fix: don't block event loop)."""
         try:
             proc = await asyncio.to_thread(subprocess.run, cmd, capture_output=True, text=True, timeout=timeout)
-            return proc.stdout or ""
+            stdout = proc.stdout
+            if isinstance(stdout, bytes):
+                stdout = stdout.decode("utf-8", errors="replace")
+            return stdout or ""
         except Exception:
             return ""
 

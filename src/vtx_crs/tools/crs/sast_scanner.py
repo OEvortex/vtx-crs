@@ -19,16 +19,18 @@ try:
     from vtx.core.types import ToolResult  # legacy
 except (ModuleNotFoundError, ImportError):
     from vtx.tools import BaseTool  # type: ignore
-    from vtx.core.types import ToolResult  # type: ignore
+    from vtx.core.types import ToolResult
 
-from vtx_crs.core import Severity, get_case_manager
+from vtx_crs.core import FindingStatus, Severity, VulnerabilityFinding, get_case_manager
 
 from ._common import MAX_FILE_BYTES, iter_source_files, resolve_repo_path
 from .vuln_scanner import DEFAULT_SCAN_EXTENSIONS as _DEFAULT_SCAN_EXTENSIONS
 
 _case_manager = get_case_manager()
 
-_STRUCTURAL_RULES = [
+from typing import Any
+
+_STRUCTURAL_RULES: list[dict[str, Any]] = [
     {
         "name": "unauthenticated_route",
         "cwe": "CWE-306",
@@ -108,6 +110,7 @@ class SastScanParams(BaseModel):
     repo_path: str = ""
     min_severity: str = "info"
     include_exts: list[str] = []
+    save_findings: bool = True
 
 
 class SastScannerTool(BaseTool[SastScanParams]):
@@ -128,6 +131,12 @@ class SastScannerTool(BaseTool[SastScanParams]):
     async def execute(
         self, params: SastScanParams, cancel_event: asyncio.Event | None = None
     ) -> ToolResult:
+        # Auto-attach repo to case if needed (fixes ghost case with 0 findings)
+        _tmp_case = _case_manager.active_case
+        _tmp_repo = resolve_repo_path(params.repo_path, _tmp_case.repo_path)
+        if _tmp_repo.exists() and not _tmp_case.repo_path:
+            _tmp_case.repo_path = str(_tmp_repo)
+            _case_manager.save_active()
         repo = resolve_repo_path(params.repo_path, _case_manager.active_case.repo_path)
         if not repo.exists() or not repo.is_dir():
             return ToolResult(
@@ -160,12 +169,12 @@ class SastScannerTool(BaseTool[SastScanParams]):
 
             for lineno, line in enumerate(lines, 1):
                 for rule in _STRUCTURAL_RULES:
-                    if not re.search(rule["pattern"], line, re.IGNORECASE):
+                    if not re.search(str(rule["pattern"]), line, re.IGNORECASE):
                         continue
                     sev_rank = severity_rank.get(rule["severity"], 4)
                     if sev_rank > min_rank:
                         continue
-                    key = (rel, rule["name"], lineno)
+                    key = (rel, str(rule["name"]), lineno)
                     if key in seen:
                         continue
                     seen.add(key)
@@ -192,8 +201,30 @@ class SastScannerTool(BaseTool[SastScanParams]):
                 ui_details="",
             )
 
+        # Persist to case (fixes 0-findings summary)
+        if params.save_findings:
+            case = _case_manager.active_case
+            for f in findings:
+                vf = VulnerabilityFinding(
+                    title=f["rule"].replace("_", " ").title(),
+                    description=f["description"],
+                    severity=Severity.from_str(f["severity"]),
+                    cwe_id=f["cwe"],
+                    confidence=f["confidence"],
+                    file_path=f["file"],
+                    line_start=f["line"],
+                    line_end=f["line"],
+                    code_snippet=f["code"],
+                    remediation=f["remediation"],
+                    status=FindingStatus.OPEN,
+                    source="sast",
+                    metadata={"pattern": f["rule"]},
+                )
+                case.add_finding(vf)
+            _case_manager.save_active()
+
         lines_out = [
-            f"Structural SAST: {len(findings)} candidate(s)",
+            f"Structural SAST: {len(findings)} candidate(s) -> persisted to case {_case_manager.active_case.case_id}",
             "",
             f"{'FILE':<30} {'LINE':<6} {'SEV':<9} {'RULE'}",
             "-" * 70,
@@ -209,6 +240,6 @@ class SastScannerTool(BaseTool[SastScanParams]):
         return ToolResult(
             success=True,
             result=result_text,
-            ui_summary=f"{len(findings)} structural finding(s)",
+            ui_summary=f"{len(findings)} structural finding(s) -> case {_case_manager.active_case.case_id}",
             ui_details=result_text,
         )

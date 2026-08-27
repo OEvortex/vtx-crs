@@ -17,7 +17,7 @@ try:
     from vtx.core.types import ToolResult  # legacy
 except (ModuleNotFoundError, ImportError):
     from vtx.tools import BaseTool  # type: ignore
-    from vtx.core.types import ToolResult  # type: ignore
+    from vtx.core.types import ToolResult
 
 from vtx_crs.core import FindingStatus, Severity, VulnerabilityFinding, get_case_manager
 

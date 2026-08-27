@@ -14,9 +14,9 @@ try:
     from vtx.core.types import ToolResult  # legacy
 except (ModuleNotFoundError, ImportError):
     from vtx.tools import BaseTool  # type: ignore
-    from vtx.core.types import ToolResult  # type: ignore
+    from vtx.core.types import ToolResult
 
-from vtx_crs.core import get_case_manager
+from vtx_crs.core import FindingStatus, Severity, VulnerabilityFinding, get_case_manager
 
 from ._common import resolve_repo_path
 
@@ -132,6 +132,31 @@ class ServiceAnalyzerTool(BaseTool[ServiceAnalyzeParams]):
 
         # Success semantics: scan succeeded regardless of open count (defensive vs offensive)
         text = "\n".join(sections)
+        # Persist open ports as findings for case report
+        if open_ports:
+            try:
+                _c = _case_manager.active_case
+                if not _c.repo_path and 'target' in locals():
+                    _c.repo_path = str(repo) if 'repo' in locals() else _c.repo_path
+                for port in open_ports[:5]:
+                    vf = VulnerabilityFinding(
+                        title=f"Open port {port}/tcp on {target}",
+                        description=f"Service analyzer found open port {port} with banner {banners.get(port,'')[:100]}. Attack surface exposed.",
+                        severity=Severity.MEDIUM,
+                        cwe_id="CWE-200",
+                        confidence=0.5,
+                        file_path=f"{target}:{port}",
+                        evidence=[banners.get(port,'')[:300]],
+                        remediation="Restrict port exposure, add auth, firewall, or bind to localhost.",
+                        status=FindingStatus.OPEN,
+                        source="service_analyze",
+                        metadata={"port": port, "banner": banners.get(port,'')[:100]},
+                    )
+                    _c.add_finding(vf)
+                _case_manager.save_active()
+            except Exception:
+                pass
+
         return ToolResult(
             success=True,
             result=text,

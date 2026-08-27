@@ -17,7 +17,7 @@ try:
     from vtx.core.types import ToolResult  # legacy
 except (ModuleNotFoundError, ImportError):
     from vtx.tools import BaseTool  # type: ignore
-    from vtx.core.types import ToolResult  # type: ignore
+    from vtx.core.types import ToolResult
 
 from vtx_crs.core import get_case_manager
 from ._common import iter_source_files, resolve_repo_path, MAX_FILE_BYTES

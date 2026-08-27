@@ -18,7 +18,7 @@ try:
     from vtx.core.types import ToolResult  # legacy
 except (ModuleNotFoundError, ImportError):
     from vtx.tools import BaseTool  # type: ignore
-    from vtx.core.types import ToolResult  # type: ignore
+    from vtx.core.types import ToolResult
 
 from vtx_crs.core import get_case_manager
 
@@ -79,7 +79,7 @@ class SymbolicExecutorTool(BaseTool[SymbolicExecuteParams]):
         self, target: Path, params: SymbolicExecuteParams, cancel_event: asyncio.Event | None
     ) -> ToolResult:
         try:
-            import angr  # noqa: F401
+            import angr  # type: ignore  # noqa: F401
         except ImportError:
             return ToolResult(
                 success=False,
@@ -151,7 +151,7 @@ class SymbolicExecutorTool(BaseTool[SymbolicExecuteParams]):
     @staticmethod
     def _angr_available() -> bool:
         try:
-            import angr  # noqa: F401
+            import angr  # type: ignore  # noqa: F401
             return True
         except ImportError:
             return False
@@ -164,7 +164,7 @@ class SymbolicExecutorTool(BaseTool[SymbolicExecuteParams]):
         # Offensive strategy: bit-flip, boundary, arithmetic, dictionary (inspired by RAPTOR fuzz mutators)
         boundary_vals = [b"\x00", b"\xff", b"\x7f", b"\x80", b"A" * 8, b"%s%p%x%d", b"../" * 4, b"'; DROP TABLE --", b"<script>alert(1)</script>"]
         for i in range(1, count):
-            idx = i % len(base if base else 1)
+            idx = i % len(base if base else b"")
             strategy = i % 5
             mutated = bytearray(base if base else b"A")
             if strategy == 0:  # byte increment

@@ -8,7 +8,9 @@ Free engines used when available; falls back to regex-only (always works).
 from __future__ import annotations
 
 import asyncio
+import re
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from pydantic import BaseModel
 from vtx.core.types import ToolResult
@@ -17,7 +19,10 @@ try:
     from vtx.core.types import ToolResult  # legacy
 except (ModuleNotFoundError, ImportError):
     from vtx.tools import BaseTool  # type: ignore
-    from vtx.core.types import ToolResult  # type: ignore
+    from vtx.core.types import ToolResult
+
+if TYPE_CHECKING:
+    from .taint_analyzer import TaintAnalyzeParams
 
 from vtx_crs.core import get_case_manager
 from ._common import resolve_repo_path
@@ -54,85 +59,184 @@ class UnifiedScanTool(BaseTool[UnifiedScanParams]):
         if not repo.exists():
             return ToolResult(success=False, result=f"Repo not found: {repo}", ui_summary="Invalid repo", ui_details="")
 
+        # Auto-attach repo to case if case has no repo yet (fixes 0-findings ghost case)
+        case = _case_manager.active_case
+        if not case.repo_path:
+            case.repo_path = str(repo)
+        elif case.repo_path != str(repo):
+            # If user scanned a different repo than case, update case repo (or create new if mismatch is big)
+            # For now, just update to current repo so findings land in the viewed case
+            case.repo_path = str(repo)
+        _case_manager.save_active()
+
         # Lazy imports to avoid circular deps
-        from .vuln_scanner import VulnScannerTool, VulnScanParams
-        from .sast_scanner import SastScannerTool, SastScanParams
+        from .vuln_scanner import VulnScannerTool, VulnScanParams, DEFAULT_SCAN_EXTENSIONS
+        from .sast_scanner import SastScannerTool
         from .taint_analyzer import TaintAnalyzerTool, TaintAnalyzeParams
+        from vtx_crs.core import Severity
 
         vuln_tool = VulnScannerTool()
         sast_tool = SastScannerTool()
         taint_tool = TaintAnalyzerTool() if params.include_taint else None
 
-        # Run in parallel
-        vuln_coro = vuln_tool.execute(VulnScanParams(repo_path=str(repo), min_severity=params.min_severity, save_findings=False, use_external_engines=True), cancel_event)
-        sast_coro = sast_tool.execute(SastScanParams(repo_path=str(repo), min_severity=params.min_severity), cancel_event)
-        coros = [vuln_coro, sast_coro]
+        min_sev = Severity.from_str(params.min_severity)
+
+        # Run scans and capture FINDING OBJECTS directly (not just ToolResult text) so we can persist accurately
+        # Vuln: patterns + external engines
+        vuln_findings = vuln_tool._scan_patterns(repo, set(DEFAULT_SCAN_EXTENSIONS), min_sev, cancel_event)
+        vuln_external: list = []
+        if VulnScannerTool is not None:
+            try:
+                vuln_external = await vuln_tool._run_external_engines(repo, min_sev, params.timeout_seconds, cancel_event)
+                # dedup external vs patterns
+                seen = {(f.file_path, f.line_start, f.metadata.get("pattern") or f.title) for f in vuln_findings}
+                for ef in vuln_external:
+                    key = (ef.file_path, ef.line_start, ef.metadata.get("pattern") or ef.title)
+                    if key not in seen:
+                        vuln_findings.append(ef)
+                        seen.add(key)
+            except Exception:
+                pass
+
+        # SAST: generate findings via its rule set (manual, reliable)
+        sast_findings = []
+        if not sast_findings:
+            try:
+                from .sast_scanner import _STRUCTURAL_RULES, _DEFAULT_SCAN_EXTENSIONS as _SDEF
+                import re as _re
+                from vtx_crs.core import VulnerabilityFinding as _VF, FindingStatus as _FS, Severity as _Sev
+                from ._common import MAX_FILE_BYTES as _MFB, iter_source_files as _ISF
+                sast_findings = []
+                seen_sast: set[tuple[str, str, int]] = set()
+                severity_rank = {"critical": 0, "high": 1, "medium": 2, "low": 3, "info": 4}
+                min_rank = severity_rank.get(min_sev.value, 4)
+                for path in _ISF(repo, _SDEF):
+                    if cancel_event and cancel_event.is_set():
+                        break
+                    try:
+                        if path.stat().st_size > _MFB:
+                            continue
+                        content = path.read_text(encoding="utf-8", errors="ignore")
+                    except OSError:
+                        continue
+                    rel = str(path.relative_to(repo))
+                    lines = content.splitlines()
+                    for lineno, line in enumerate(lines, 1):
+                        for rule in _STRUCTURAL_RULES:
+                            if not _re.search(rule["pattern"], line, _re.IGNORECASE):
+                                continue
+                            if severity_rank.get(rule["severity"], 4) > min_rank:
+                                continue
+                            key = (rel, rule["name"], lineno)
+                            if key in seen_sast:
+                                continue
+                            seen_sast.add(key)
+                            sast_findings.append(_VF(
+                                title=rule["name"].replace("_", " ").title(),
+                                description=rule["description"],
+                                severity=_Sev.from_str(rule["severity"]),
+                                cwe_id=rule["cwe"],
+                                confidence=rule["confidence"],
+                                file_path=rel,
+                                line_start=lineno,
+                                line_end=lineno,
+                                code_snippet=line.strip()[:200],
+                                remediation=rule["remediation"],
+                                status=_FS.OPEN,
+                                source="sast",
+                                metadata={"pattern": rule["name"]},
+                            ))
+            except Exception:
+                sast_findings = []
+
+        # Taint: collect flows as findings too
+        taint_findings = []
+        taint_res = None
         if taint_tool:
-            coros.append(taint_tool.execute(TaintAnalyzeParams(repo_path=str(repo), max_findings=40), cancel_event))
+            taint_res = await taint_tool.execute(TaintAnalyzeParams(repo_path=str(repo), max_findings=40), cancel_event)
+            # Also convert taint flows to VulnerabilityFinding objects for case persistence
+            try:
+                # taint_analyzer stores flows but not as findings; we convert the last run's flows
+                # Re-derive quickly: use TaintAnalyzerTool's internal logic by inspecting its result is not enough
+                # So we create findings from taint result text is lossy; instead we will create placeholder findings for each taint flow detected
+                if taint_res and taint_res.success:
+                    # Count flows from ui_summary
+                    import re as _re2
+                    m = _re2.search(r"(\d+)\s+taint", str(getattr(taint_res, "ui_summary", "")))
+                    if m and int(m.group(1)) > 0:
+                        # Create generic taint findings for persistence (so case shows them)
+                        for _i in range(int(m.group(1))):
+                            from vtx_crs.core import VulnerabilityFinding as _VF2, FindingStatus as _FS2, Severity as _Sev2
+                            taint_findings.append(_VF2(
+                                title="Taint flow: untrusted input -> sink",
+                                description="Heuristic taint: untrusted source reaches dangerous sink (confirm by reading file). See taint_analyze details.",
+                                severity=_Sev2.MEDIUM,
+                                cwe_id="CWE-20",
+                                confidence=0.4,
+                                file_path=str(repo),
+                                line_start=0,
+                                code_snippet=getattr(taint_res, "ui_details", "")[:500],
+                                remediation="Validate taint flow by reading code; add allowlist / parameterization / escaping at sink.",
+                                status=_FS2.REVIEW,
+                                source="taint",
+                                metadata={"engine": "taint_analyzer"},
+                            ))
+                            break  # only one aggregated finding to avoid spam; taint already has flow list in details
+            except Exception:
+                pass
 
-        results = await asyncio.gather(*coros, return_exceptions=True)
+        # Now we have all finding objects; persist with deduplication
+        all_findings = vuln_findings + sast_findings + taint_findings
+        # Deduplicate by (file, line, pattern/title)
+        seen_keys: set[tuple[str, int, str]] = set()
+        deduped: list = []
+        for f in all_findings:
+            key = (f.file_path, f.line_start, f.metadata.get("pattern") or f.title)
+            if key not in seen_keys:
+                deduped.append(f)
+                seen_keys.add(key)
 
-        # Collect findings from case? Instead collect ToolResult details. We also already saved via tools if save_findings.
-        # For unified, we re-run collection via Vuln/SAST internal logic is already saved if we set save_findings=False above — so manually merge.
-        # Simpler: extract findings from the tools' side-effects? We already have ToolResult.result text.
-        # We will also collect actual VulnerabilityFindings from case dedup later. For now synthesize summary.
-        vuln_res = results[0] if len(results) > 0 else None
-        sast_res = results[1] if len(results) > 1 else None
-        taint_res = results[2] if len(results) > 2 else None
+        if params.save_findings and deduped:
+            for f in deduped:
+                case.add_finding(f)
+            _case_manager.save_active()
 
-        # Count findings by parsing ToolResult (fallback) — accurate counts via ToolResult success
+        # Build report sections from actual counts (not ToolResult parsing)
+        vc = len(vuln_findings)
+        sc = len(sast_findings)
+        taint_match = re.search(r"(\d+)", getattr(taint_res, "ui_summary", "") or "0")
+        tc = len(taint_findings) if taint_findings else (int(taint_match.group(1)) if taint_match else 0) if taint_res else 0
+        total = len(deduped)
+
         sections = [
             "## Unified Scan (OP Defensive — merged vuln+sast+taint)",
             f"- Repo: {repo}",
             f"- Min severity: {params.min_severity}",
+            f"- Vuln (patterns+semgrep/bandit/gitleaks): {vc}",
+            f"- SAST (structural): {sc}",
         ]
-        # Extract counts from ui_summary like "5 finding(s)"
-        def _count(r):
-            if not r or isinstance(r, Exception):
-                return 0
-            import re
-            m = re.search(r"(\d+)\s+(?:finding|flow|candidate|taint)", str(getattr(r, "ui_summary", "")))
-            return int(m.group(1)) if m else 0
-
-        vc, sc, tc = _count(vuln_res), _count(sast_res), _count(taint_res)
-        total = vc + sc + tc
-
-        sections.append(f"- Vuln (patterns+semgrep/bandit/gitleaks): {vc}")
-        sections.append(f"- SAST (structural): {sc}")
         if params.include_taint:
             sections.append(f"- Taint flows: {tc}")
-        sections.append(f"- Total raw (pre-dedup): {total}")
+        sections.append(f"- Total deduped findings persisted: {total} -> case {case.case_id}")
         sections.append("")
 
-        # Now actually persist deduped findings? Delegate to vuln+ sast saving if requested
         if params.save_findings:
-            # Re-run vuln with save=True to persist, or manually copy from previous run's case?
-            # Best: call again with save but we already have findings — just ensure they are saved.
-            # We already called with save_findings=False, so nothing saved. So now save by re-querying via a lightweight dedup pass:
-            # Trigger a second lightweight scan that saves — but to avoid double cost, just set save and re-use ToolResult's side effect via direct call.
-            # For OP speed, we save now by executing vuln with save=True in background (cheap if engines cached).
-            try:
-                save_res = await vuln_tool.execute(VulnScanParams(repo_path=str(repo), min_severity=params.min_severity, save_findings=True, use_external_engines=False), cancel_event)
-                # sast already not saving; we need to save its findings too — run with light saving via case.add_finding loop
-                # Instead, rely on vuln's findings which already cover most SAST overlap; taint is heuristic not case-persisted by design.
-                sections.append(f"- Persisted {vc} vuln findings to case (sast/taint are advisory traces).")
-            except Exception:
-                pass
+            sections.append(f"- Persisted {total} findings to case {case.case_id} ({case.title}) — run case_manager action=summary to see them.")
 
-        # Compose detailed sub-sections
-        for label, res in [("VULN", vuln_res), ("SAST", sast_res), ("TAINT", taint_res)]:
-            if res and not isinstance(res, Exception):
-                sections.append("")
-                sections.append(f"### {label}: {getattr(res, 'ui_summary', '')}")
-                detail = getattr(res, "ui_details", "") or getattr(res, "result", "")
-                # trim to 30 lines per section
-                lines = detail.splitlines()[:30]
-                sections.extend(f"  {l}" for l in lines)
+        # Add sub-sections with tool details
+        vuln_detail = f"{vc} finding(s) (patterns + external engines)"
+        sast_detail = f"{sc} structural finding(s)"
+        taint_detail = getattr(taint_res, "ui_details", "") if taint_res else ""
+        for label, detail in [("VULN", vuln_detail), ("SAST", sast_detail), ("TAINT", taint_detail or "No taint flows")]:
+            sections.append("")
+            sections.append(f"### {label}")
+            for line in (detail.splitlines()[:30] if detail else ["(none)"]):
+                sections.append(f"  {line}")
 
         sections.extend([
             "",
             "### Next (offensive validation)",
-            "- For each high/critical: taint_analyze already included — confirm by reading file:line",
+            "- For each high/critical: confirm by reading file:line",
             "- Then harness_gen -> fuzz_target / dynamic_analyze -> crash_triage -> exploit_feasibility -> pov_generate",
             "",
             "### Next (defensive hardening)",
@@ -140,4 +244,4 @@ class UnifiedScanTool(BaseTool[UnifiedScanParams]):
         ])
 
         text = "\n".join(sections)
-        return ToolResult(success=True, result=text, ui_summary=f"Unified: {vc} vuln + {sc} sast + {tc} taint = {total} raw", ui_details=text)
+        return ToolResult(success=True, result=text, ui_summary=f"Unified: {vc} vuln + {sc} sast + {tc} taint = {total} persisted to {case.case_id}", ui_details=text)

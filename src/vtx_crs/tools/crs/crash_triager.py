@@ -18,9 +18,9 @@ try:
     from vtx.core.types import ToolResult  # legacy
 except (ModuleNotFoundError, ImportError):
     from vtx.tools import BaseTool  # type: ignore
-    from vtx.core.types import ToolResult  # type: ignore
+    from vtx.core.types import ToolResult
 
-from vtx_crs.core import get_case_manager
+from vtx_crs.core import FindingStatus, Severity, VulnerabilityFinding, get_case_manager
 
 from ._common import resolve_repo_path
 
@@ -96,6 +96,30 @@ class CrashTriagerTool(BaseTool[CrashTriageParams]):
         ]
 
         result_text = "\n".join(lines_out)
+        # Persist crash triage as finding
+        try:
+            _c = _case_manager.active_case
+            # auto-attach repo if needed
+            if not _c.repo_path and 'repo' in locals() and repo.exists():
+                _c.repo_path = str(repo)
+            vf = VulnerabilityFinding(
+                title=f"Crash: {crash_type}",
+                description=f"Crash triaged as {crash_type} at {location or 'unknown'} with signals {signals}",
+                severity=Severity.HIGH if "overflow" in crash_type.lower() or "sanitizer" in crash_type.lower() else Severity.MEDIUM,
+                cwe_id="CWE-119",
+                confidence=0.6,
+                file_path=location or str(repo) if 'repo' in locals() else "unknown",
+                evidence=[text[:1000]],
+                remediation="Reproduce with harness, enable ASan, patch bounds checks, re-run exploit_feasibility.",
+                status=FindingStatus.OPEN,
+                source="crash_triage",
+                metadata={"crash_type": crash_type, "location": location or "", "signals": signals},
+            )
+            _c.add_finding(vf)
+            _case_manager.save_active()
+        except Exception:
+            pass
+
         return ToolResult(
             success=True,
             result=result_text,

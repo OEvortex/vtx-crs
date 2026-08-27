@@ -28,12 +28,12 @@ except (ModuleNotFoundError, ImportError):
     try:
         from vtx.ui.blocks import ToolBlock  # type: ignore
     except ImportError:
-        from vtx.tui.blocks import ToolBlock  # type: ignore
+        from vtx.tui.blocks import ToolBlock
     try:
-        from vtx.config import get_config
-        config = get_config()  # type: ignore
+        from vtx.config import get_config  # type: ignore
+        config = get_config()
     except Exception:
-        from vtx_crs.config import config  # type: ignore
+        from vtx_crs.config import config
 
 if TYPE_CHECKING:
     from vtx.ai.agent.tools import BaseTool

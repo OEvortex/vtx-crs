@@ -18,9 +18,9 @@ try:
     from vtx.core.types import ToolResult  # legacy
 except (ModuleNotFoundError, ImportError):
     from vtx.tools import BaseTool  # type: ignore
-    from vtx.core.types import ToolResult  # type: ignore
+    from vtx.core.types import ToolResult
 
-from vtx_crs.core import get_case_manager
+from vtx_crs.core import FindingStatus, Severity, VulnerabilityFinding, get_case_manager
 
 from ._common import MAX_FILE_BYTES, iter_source_files, resolve_repo_path
 
@@ -45,6 +45,7 @@ class TaintAnalyzeParams(BaseModel):
     repo_path: str = ""
     max_findings: int = 50
     include_exts: list[str] = [".py", ".js", ".ts", ".c", ".cpp"]
+    save_findings: bool = False  # taint is REVIEW by default; set True to persist to case for detailed report
 
 
 class TaintAnalyzerTool(BaseTool[TaintAnalyzeParams]):
@@ -65,6 +66,12 @@ class TaintAnalyzerTool(BaseTool[TaintAnalyzeParams]):
     async def execute(
         self, params: TaintAnalyzeParams, cancel_event: asyncio.Event | None = None
     ) -> ToolResult:
+        # Auto-attach repo to case if needed
+        _tmp_case = _case_manager.active_case
+        _tmp_repo = resolve_repo_path(params.repo_path, _tmp_case.repo_path)
+        if _tmp_repo.exists() and not _tmp_case.repo_path:
+            _tmp_case.repo_path = str(_tmp_repo)
+            _case_manager.save_active()
         repo = resolve_repo_path(params.repo_path, _case_manager.active_case.repo_path)
         if not repo.exists() or not repo.is_dir():
             return ToolResult(
@@ -77,7 +84,7 @@ class TaintAnalyzerTool(BaseTool[TaintAnalyzeParams]):
         extensions = set(params.include_exts)
         max_findings = max(1, min(params.max_findings, 200))
         flows: list[dict] = []
-        seen: set[tuple[str, str, str]] = set()
+        seen: set[tuple[str, str, str, str]] = set()
 
         # Offensive+Defensive: file-level taint with variable propagation (RAPTOR-style heuristic)
         # 1) Collect source variables per file, then find sinks reachable via those vars
@@ -169,10 +176,33 @@ class TaintAnalyzerTool(BaseTool[TaintAnalyzeParams]):
             )
             lines_out.append(f"    {f['code']}")
 
+        # Persist taint flows as REVIEW findings if requested (so case_manager shows them for detailed report)
+        if params.save_findings and flows:
+            case = _case_manager.active_case
+            for fl in flows:
+                vf = VulnerabilityFinding(
+                    title=f"Taint: {','.join(fl['sinks'])} via {','.join(fl['sources'])}",
+                    description=f"Taint flow: sources {fl['sources']} -> sinks {fl['sinks']} at {fl['file']}:{fl['line']}. Confirm by reading code.",
+                    severity=Severity.MEDIUM,
+                    cwe_id="CWE-20",
+                    confidence=0.35,
+                    file_path=fl["file"],
+                    line_start=fl["line"],
+                    line_end=fl["line"],
+                    code_snippet=fl["code"],
+                    remediation="Validate flow; add allowlist/escaping/parameterization between source and sink.",
+                    status=FindingStatus.REVIEW,
+                    source="taint",
+                    metadata={"sources": fl["sources"], "sinks": fl["sinks"]},
+                )
+                case.add_finding(vf)
+            _case_manager.save_active()
+
         result_text = "\n".join(lines_out)
+        persisted_note = f" -> case { _case_manager.active_case.case_id}" if params.save_findings and flows else ""
         return ToolResult(
             success=True,
             result=result_text,
-            ui_summary=f"{len(flows)} taint candidate(s)",
+            ui_summary=f"{len(flows)} taint candidate(s){persisted_note}",
             ui_details=result_text,
         )

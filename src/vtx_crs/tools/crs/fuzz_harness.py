@@ -18,7 +18,7 @@ try:
     from vtx.core.types import ToolResult  # legacy
 except (ModuleNotFoundError, ImportError):
     from vtx.tools import BaseTool  # type: ignore
-    from vtx.core.types import ToolResult  # type: ignore
+    from vtx.core.types import ToolResult
 
 from vtx_crs.core import FindingStatus, Severity, VulnerabilityFinding, get_case_manager
 
@@ -110,6 +110,34 @@ class FuzzHarnessTool(BaseTool[FuzzParams]):
                     sections.append(f"- Input (hex): {crash['input'][:200]}")
 
         text = "\n".join(sections)
+        # Persist crashes to case so case_manager shows them
+        if crashes:
+            try:
+                _c = _case_manager.active_case
+                if not _c.repo_path:
+                    _c.repo_path = str(repo)
+                for cr in crashes[:5]:
+                    try:
+                        vf = VulnerabilityFinding(
+                            title=f"Fuzz crash: {cr.get('signal','crash')} in {params.target_command[:40]}",
+                            description=f"Fuzzing found crash with {cr.get('signal')} exit={cr.get('exit_code')}: {cr.get('output','')[:300]}",
+                            severity=Severity.HIGH,
+                            cwe_id="CWE-119",
+                            confidence=0.65,
+                            file_path=str(repo),
+                            evidence=[cr.get('output','')[:500], f"input hex: {cr.get('input','')[:100]}"],
+                            remediation="Triaged via crash_triage; patch bounds checks, enable ASan, re-run harness.",
+                            status=FindingStatus.OPEN,
+                            source="fuzz_target",
+                            metadata={"fuzzer": fuzzer, "signal": cr.get('signal'), "input": cr.get('input','')[:100]},
+                        )
+                        _c.add_finding(vf)
+                    except Exception:
+                        pass
+                _case_manager.save_active()
+            except Exception:
+                pass
+
         return ToolResult(
             success=len(crashes) == 0,
             result=text,

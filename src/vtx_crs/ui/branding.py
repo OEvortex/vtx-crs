@@ -14,14 +14,14 @@ except (ModuleNotFoundError, ImportError):
         import vtx.ui.styles as _vtx_styles  # type: ignore
         from vtx.ui.blocks import ToolBlock as _ToolBlock  # type: ignore
     except ImportError:
-        import vtx.tui.chat as _vtx_chat  # type: ignore
-        import vtx.tui.styles as _vtx_styles  # type: ignore
-        from vtx.tui.blocks import ToolBlock as _ToolBlock  # type: ignore
+        import vtx.tui.chat as _vtx_chat
+        import vtx.tui.styles as _vtx_styles
+        from vtx.tui.blocks import ToolBlock as _ToolBlock
     try:
-        from vtx.config import get_config
-        config = get_config()  # type: ignore
+        from vtx.config import get_config  # type: ignore
+        config = get_config()
     except Exception:
-        from vtx_crs.config import config  # type: ignore
+        from vtx_crs.config import config
 from rich.text import Text
 from textual.widgets import Label
 
@@ -183,4 +183,4 @@ def _patched_tool_block_init(self: _ToolBlock, *args, **kwargs) -> None:
         self.add_class("crs-block")
 
 
-_ToolBlock.__init__ = _patched_tool_block_init  # ty:ignore[method-assign]
+_ToolBlock.__init__ = _patched_tool_block_init  # type: ignore

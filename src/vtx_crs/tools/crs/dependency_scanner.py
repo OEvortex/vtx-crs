@@ -24,7 +24,7 @@ try:
     from vtx.core.types import ToolResult  # legacy
 except (ModuleNotFoundError, ImportError):
     from vtx.tools import BaseTool  # type: ignore
-    from vtx.core.types import ToolResult  # type: ignore
+    from vtx.core.types import ToolResult
 
 from vtx_crs.core import FindingStatus, Severity, VulnerabilityFinding, get_case_manager
 
@@ -89,6 +89,12 @@ class DependencyScannerTool(BaseTool[DependencyScanParams]):
     async def execute(
         self, params: DependencyScanParams, cancel_event: asyncio.Event | None = None
     ) -> ToolResult:
+        # Auto-attach repo to case if needed
+        _tmp_case = _case_manager.active_case
+        _tmp_repo = resolve_repo_path(params.repo_path, _tmp_case.repo_path)
+        if _tmp_repo.exists() and not _tmp_case.repo_path:
+            _tmp_case.repo_path = str(_tmp_repo)
+            _case_manager.save_active()
         repo = resolve_repo_path(params.repo_path, _case_manager.active_case.repo_path)
         if not repo.exists() or not repo.is_dir():
             return ToolResult(

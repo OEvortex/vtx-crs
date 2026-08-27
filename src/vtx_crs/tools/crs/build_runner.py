@@ -59,16 +59,16 @@ from pydantic import BaseModel, Field
 
 
 class BuildParams(BaseModel):
-    repo_path: str = Field(default="", description="Target repository root path.")
-    command: str = Field(default="", description="Explicit build command. If empty, auto-detects from project build manifests.")
-    timeout_seconds: int = Field(default=600, description="Build execution timeout in seconds.")
+    repo_path: str = Field(default="", description="Project root path. Defaults to the active case repo.")
+    command: str = Field(default="", description="Build command to run. If empty, auto-detects from pyproject.toml, Cargo.toml, package.json, etc.")
+    timeout_seconds: int = Field(default=600, description="Build timeout in seconds (default 600).")
 
 
 class BuildRunnerTool(BaseTool[BuildParams]):
     name = "build_project"
     description = (
-        "Project Build Engine (Phase 4): Compiles/builds the target project using auto-detected build systems "
-        "(pyproject.toml, package.json, Cargo.toml, go.mod, CMake, Makefile) or an explicit build command."
+        "Builds the target project using auto-detected or explicit commands. Run after repo_analyze or when applying patches. "
+        "Call with command for custom builds; otherwise auto-detects from manifests."
     )
     params = BuildParams
     mutating = True

@@ -31,19 +31,19 @@ from pydantic import BaseModel, Field
 
 
 class PovGenerateParams(BaseModel):
-    repo_path: str = Field(default="", description="Base repository path.")
-    target_file: str = Field(default="", description="Path to target module or script to invoke.")
+    repo_path: str = Field(default="", description="Repository root path. Defaults to the active case repo.")
+    target_file: str = Field(default="", description="Target module or script to invoke in the PoC.")
     crash_input: str = Field(default="", description="String or base64 payload that triggers the bug.")
-    crash_input_file: str = Field(default="", description="Path to file containing raw exploit payload.")
-    output_dir: str = Field(default="", description="Directory where reproducible PoC script will be saved.")
-    poc_type: str = Field(default="python", description="Format/language for PoC: 'python' | 'c' | 'rust'.")
+    crash_input_file: str = Field(default="", description="Path to a file containing the raw payload.")
+    output_dir: str = Field(default="", description="Directory to write the PoC script (default: repo/pocs).")
+    poc_type: str = Field(default="python", description="PoC language format: python, c, or rust.")
 
 
 class PovGeneratorTool(BaseTool[PovGenerateParams]):
     name = "pov_generate"
     description = (
-        "Proof-of-Vulnerability Generator (Phase 2): Generates minimal, standalone, reproducible PoC scripts "
-        "demonstrating vulnerability triggers in-process or via subprocess. Safe and non-destructive."
+        "Generates a minimal, standalone proof-of-concept script that reproduces a vulnerability trigger. "
+        "Use after crash_triage to create a safe reproducer. Call with crash_input and poc_type."
     )
     params = PovGenerateParams
     mutating = True

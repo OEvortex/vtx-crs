@@ -32,17 +32,17 @@ from pydantic import BaseModel, Field
 
 
 class CoverageAnalyzeParams(BaseModel):
-    repo_path: str = Field(default="", description="Absolute path to target repository root.")
-    coverage_file: str = Field(default="", description="Path to existing coverage report file (coverage.json, coverage.xml, lcov.info).")
-    test_command: str = Field(default="pytest --cov --cov-report=term-missing", description="Test command to run for coverage generation.")
-    include_exts: list[str] = Field(default=[".py", ".js", ".ts", ".go", ".rs"], description="Source file extensions to measure.")
+    repo_path: str = Field(default="", description="Project root path. Defaults to the active case repo.")
+    coverage_file: str = Field(default="", description="Path to an existing coverage report (coverage.json, lcov.info, coverage.xml).")
+    test_command: str = Field(default="pytest --cov --cov-report=term-missing", description="Command to run if no coverage report exists.")
+    include_exts: list[str] = Field(default=[".py", ".js", ".ts", ".go", ".rs"], description="Source file extensions to include in coverage analysis.")
 
 
 class CoverageAnalyzerTool(BaseTool[CoverageAnalyzeParams]):
     name = "coverage_analyze"
     description = (
-        "Test Coverage Gap Analyzer (Phase 1): Identifies untested functions, files, and branch targets. "
-        "Surfaces uncovered sensitive sinks that require dedicated fuzzer/harness development."
+        "Identifies untested code regions from existing coverage reports or suggests how to generate them. "
+        "Use after running tests to find gaps near sensitive sinks. Call with coverage_file or test_command."
     )
     params = CoverageAnalyzeParams
     mutating = False

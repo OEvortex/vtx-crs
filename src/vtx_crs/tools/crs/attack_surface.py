@@ -28,15 +28,15 @@ _case_manager = get_case_manager()
 
 
 class AttackSurfaceParams(BaseModel):
-    repo_path: str = Field(default="", description="Absolute path to target repository root.")
-    include_trust_boundaries: bool = Field(default=True, description="Whether to include trust boundary and authentication gap mappings.")
+    repo_path: str = Field(default="", description="Project root path. Defaults to the active case repo.")
+    include_trust_boundaries: bool = Field(default=True, description="Include trust boundary and auth-gap mappings in the output.")
 
 
 class AttackSurfaceTool(BaseTool[AttackSurfaceParams]):
     name = "attack_surface"
     description = (
-        "Threat Modeling engine (Phase 0): Maps attack surfaces, unauthenticated endpoints, network listeners, "
-        "data-flow crossings, and crown jewels (DB, secret storage, OS execution). Generates prioritized P0/P1/P2 audit targets."
+        "Maps repository attack surfaces and trust boundaries. Use after repo_analyze to prioritize "
+        "unauthenticated entry points, network binds, and sensitive sinks. Call with repo_path set to the project root."
     )
     params = AttackSurfaceParams
     mutating = False

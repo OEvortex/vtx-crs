@@ -31,20 +31,20 @@ from pydantic import BaseModel, Field
 
 
 class FuzzParams(BaseModel):
-    target_command: str = Field(..., description="Target executable or driver script to fuzz.")
-    repo_path: str = Field(default="", description="Base repository or working directory path.")
-    seed_input: str = Field(default="", description="Initial valid input payload to mutate during fuzzing.")
+    target_command: str = Field(..., description="Shell command that accepts fuzz input on stdin.")
+    repo_path: str = Field(default="", description="Working directory for the fuzz target. Defaults to the active case repo.")
+    seed_input: str = Field(default="", description="Initial valid input to mutate.")
     iterations: int = Field(default=100, description="Number of mutation iterations to run.")
     timeout_seconds: int = Field(default=10, description="Per-execution timeout in seconds.")
-    fuzzer: str = Field(default="auto", description="Fuzzing engine: 'auto' | 'radamsa' | 'afl' | 'python'.")
-    corpus_dir: str = Field(default="", description="Optional directory storing seed input corpus.")
+    fuzzer: str = Field(default="auto", description="Fuzzing engine: auto, radamsa, afl, or python.")
+    corpus_dir: str = Field(default="", description="Optional directory for seed corpus storage.")
 
 
 class FuzzHarnessTool(BaseTool[FuzzParams]):
     name = "fuzz_target"
     description = (
-        "Mutation Fuzzing Engine (Phase 2): Drives input mutation campaigns (Radamsa, AFL++, or built-in Python mutators) "
-        "against binaries or parser harnesses. Detects signals, abnormal terminations, and crash-inducing inputs."
+        "Drives mutation fuzzing campaigns (Radamsa, AFL++, or built-in Python mutators) against a target command. "
+        "Use to discover crash-inducing inputs. Call with target_command set to the program invocation."
     )
     params = FuzzParams
     mutating = False

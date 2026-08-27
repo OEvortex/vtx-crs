@@ -27,20 +27,19 @@ from pydantic import BaseModel, Field
 
 
 class SecurityValidateParams(BaseModel):
-    repo_path: str = Field(default="", description="Base repository path.")
-    command: str = Field(..., description="Validation command or PoC script execution command.")
-    expected_exit_code: int | None = Field(default=None, description="Expected process returncode indicating successful mitigation.")
-    finding_id: str = Field(default="", description="ID of finding being validated to record verification in the case ledger.")
+    repo_path: str = Field(default="", description="Project root path. Defaults to the active case repo.")
+    command: str = Field(..., description="Validation command or PoC script to execute.")
+    expected_exit_code: int | None = Field(default=None, description="Expected return code indicating successful mitigation.")
+    finding_id: str = Field(default="", description="ID of the finding being validated.")
     note: str = Field(default="", description="Contextual note or proof explanation.")
-    timeout_seconds: int = Field(default=300, description="Verification command execution timeout in seconds.")
+    timeout_seconds: int = Field(default=300, description="Validation command timeout in seconds (default 300).")
 
 
 class SecurityValidatorTool(BaseTool[SecurityValidateParams]):
     name = "security_validate"
     description = (
-        "Dual-Verification Security Prover (Phase 4): Re-executes the offensive PoC against the patched codebase "
-        "to prove that the vulnerability is neutralized (PoC exits cleanly or fails to trigger the sink). "
-        "Records verification proof directly into the case finding."
+        "Re-runs a PoC or validation command against the patched codebase to prove a fix works. "
+        "Use after patch_apply and patch_validate. Call with command set to the reproducer and finding_id for tracking."
     )
     params = SecurityValidateParams
     mutating = True

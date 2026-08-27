@@ -286,20 +286,19 @@ from pydantic import BaseModel, Field
 
 
 class VulnScanParams(BaseModel):
-    repo_path: str = Field(default="", description="Absolute path to target repository root.")
-    min_severity: str = Field(default="info", description="Minimum finding severity threshold: 'info' | 'low' | 'medium' | 'high' | 'critical'.")
-    include_exts: list[str] = Field(default_factory=list, description="Optional file extension filter (e.g. ['.py', '.js']). Empty scans all supported files.")
-    save_findings: bool = Field(default=True, description="Whether to persist discovered findings into active case ledger.")
-    use_external_engines: bool = Field(default=True, description="Enable keyless external CLI scanners (semgrep/bandit/gitleaks) if present.")
+    repo_path: str = Field(default="", description="Project root path. Defaults to the active case repo.")
+    min_severity: str = Field(default="info", description="Minimum severity threshold: info, low, medium, high, or critical.")
+    include_exts: list[str] = Field(default_factory=list, description="File extension filter. Empty scans all supported files.")
+    save_findings: bool = Field(default=True, description="Persist findings to the active case ledger.")
+    use_external_engines: bool = Field(default=True, description="Enable semgrep, bandit, and gitleaks if installed.")
     external_timeout: int = Field(default=60, description="Timeout in seconds for external scanner execution.")
 
 
 class VulnScannerTool(BaseTool[VulnScanParams]):
     name = "vuln_scan"
     description = (
-        "Pattern-based Vulnerability Scanner (Phase 1 Granular): Executes CWE-mapped static security pattern analysis "
-        "across supported languages (injection, XSS, traversal, deserialization, hardcoded secrets, weak crypto). "
-        "Note: unified_scan is preferred for full repository scans."
+        "Pattern-based vulnerability scanner with CWE-mapped rules and optional semgrep/bandit/gitleaks. "
+        "Use for granular source inspections. Call with repo_path; prefer unified_scan for full repo sweeps."
     )
     params = VulnScanParams
     mutating = False

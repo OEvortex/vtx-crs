@@ -45,17 +45,17 @@ from pydantic import BaseModel, Field
 
 
 class TaintAnalyzeParams(BaseModel):
-    repo_path: str = Field(default="", description="Absolute path to target repository root.")
-    max_findings: int = Field(default=50, description="Maximum number of candidate taint flows to return.")
-    include_exts: list[str] = Field(default=[".py", ".js", ".ts", ".c", ".cpp"], description="File extensions to include in taint propagation tracking.")
-    save_findings: bool = Field(default=False, description="Whether to persist taint findings as REVIEW items in the active case.")
+    repo_path: str = Field(default="", description="Project root path. Defaults to the active case repo.")
+    max_findings: int = Field(default=50, description="Maximum candidate taint flows to return.")
+    include_exts: list[str] = Field(default=[".py", ".js", ".ts", ".c", ".cpp"], description="File extensions to include in taint tracking.")
+    save_findings: bool = Field(default=False, description="Persist taint flows as REVIEW findings in the active case.")
 
 
 class TaintAnalyzerTool(BaseTool[TaintAnalyzeParams]):
     name = "taint_analyze"
     description = (
-        "AST Source-to-Sink Taint Propagation Engine (Phase 1): Traces untrusted input entry points (HTTP params, "
-        "CLI args, file reads, env vars) through variables/calls into dangerous execution sinks (eval, SQL, shell, file write, pickle)."
+        "Traces untrusted inputs (HTTP params, file reads, env vars) to dangerous sinks (eval, SQL, shell, file write, pickle). "
+        "Use after repo_analyze to find candidate injection points. Call with repo_path set to the project root."
     )
     params = TaintAnalyzeParams
     mutating = False

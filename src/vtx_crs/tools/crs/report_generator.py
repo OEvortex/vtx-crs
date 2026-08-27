@@ -26,17 +26,16 @@ from pydantic import BaseModel, Field
 
 
 class ReportGenParams(BaseModel):
-    repo_path: str = Field(default="", description="Base repository path.")
-    output_dir: str = Field(default="", description="Directory to export report artifacts (.vtx_crs/reports/{case_id} default).")
-    executive_summary: str = Field(default="", description="Concise executive summary of vulnerabilities discovered and verified remediations.")
+    repo_path: str = Field(default="", description="Project root path. Defaults to the active case repo.")
+    output_dir: str = Field(default="", description="Directory for report artifacts (default: .vtx_crs/reports/{case_id}).")
+    executive_summary: str = Field(default="", description="Narrative summary of discovered vulnerabilities and verified remediations.")
 
 
 class ReportGeneratorTool(BaseTool[ReportGenParams]):
     name = "generate_report"
     description = (
-        "Comprehensive Report Generator (Phase 4): Exports complete, auditable security reports in Markdown and JSON. "
-        "Aggregates executive summary, threat model, finding catalog (CWE, severity, file:line, PoC verdict), "
-        "applied patches, and validation proof."
+        "Exports a complete Markdown and JSON security report for the active case. Use at the end of an assessment "
+        "to document findings, patches, and validations. Call with executive_summary for a custom narrative."
     )
     params = ReportGenParams
     mutating = True

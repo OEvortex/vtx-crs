@@ -32,16 +32,16 @@ from pydantic import BaseModel, Field
 
 
 class CallGraphParams(BaseModel):
-    repo_path: str = Field(default="", description="Absolute path to target repository root.")
-    max_depth: int = Field(default=3, description="Maximum call tree exploration depth.")
-    include_exts: list[str] = Field(default=[".py", ".js", ".ts", ".go", ".rs", ".c", ".cpp"], description="Source file extensions to parse.")
+    repo_path: str = Field(default="", description="Project root path. Defaults to the active case repo.")
+    max_depth: int = Field(default=3, description="How deep to traverse the call tree (1-10).")
+    include_exts: list[str] = Field(default=[".py", ".js", ".ts", ".go", ".rs", ".c", ".cpp"], description="Source file extensions to parse for call graphs.")
 
 
 class CallGraphTool(BaseTool[CallGraphParams]):
     name = "call_graph"
     description = (
-        "Call Graph & Reachability Engine (Phase 1): Constructs a function call graph and import dependency map "
-        "to determine if an entry point can reach a vulnerable function or if the code is unreachable dead code."
+        "Builds a heuristic function call graph and import dependency map from source files. Use after repo_analyze "
+        "to understand reachability between entry points and sinks. Call with repo_path set to the project root."
     )
     params = CallGraphParams
     mutating = False

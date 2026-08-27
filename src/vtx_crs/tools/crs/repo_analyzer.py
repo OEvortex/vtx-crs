@@ -110,15 +110,15 @@ from pydantic import BaseModel, Field
 
 
 class RepoAnalyzeParams(BaseModel):
-    repo_path: str = Field(default="", description="Absolute path to target repository root. If empty, uses active case path.")
-    depth: int = Field(default=2, description="Maximum directory traversal depth for repo layout exploration.")
+    repo_path: str = Field(default="", description="Project root path. Defaults to the active case repo or current working directory.")
+    depth: int = Field(default=2, description="How deep to traverse the directory tree (1-4).")
 
 
 class RepoAnalyzerTool(BaseTool[RepoAnalyzeParams]):
     name = "repo_analyze"
     description = (
-        "Reconnaissance engine (Phase 0): Maps codebase structure, programming languages, build systems, "
-        "test frameworks, package manifests, and primary entry points. Call first before code inspection."
+        "Maps repository structure, languages, build systems, and entry points. Use this first on an unknown codebase "
+        "to understand what you are analyzing. Call with repo_path set to the project root."
     )
     params = RepoAnalyzeParams
     mutating = False

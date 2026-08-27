@@ -25,19 +25,19 @@ from pydantic import BaseModel, Field
 class CaseManagerParams(BaseModel):
     action: Literal["create", "switch", "list", "summary", "note", "close"] = Field(
         default="summary",
-        description="Case lifecycle operation: 'create' (new assessment) | 'switch' (activate case) | 'list' | 'summary' (view active ledger) | 'note' | 'close'."
+        description="Case operation: create, switch, list, summary, note, or close."
     )
-    title: str = Field(default="", description="Human-readable title for the case engagement.")
-    repo_path: str = Field(default="", description="Root repository path attached to the case.")
-    case_id: str = Field(default="", description="Target case ID for switch/close operations.")
-    note: str = Field(default="", description="Audit note text to record in the case timeline.")
+    title: str = Field(default="", description="Human-readable title for the new case.")
+    repo_path: str = Field(default="", description="Repository root to attach to the case.")
+    case_id: str = Field(default="", description="Target case ID for switch/close actions.")
+    note: str = Field(default="", description="Audit note text to append to the case timeline.")
 
 
 class CaseManagerTool(BaseTool[CaseManagerParams]):
     name = "case_manager"
     description = (
-        "Case Lifecycle & State Ledger Manager: Tracks the entire audit session across reconnaissance, "
-        "findings, patches, and validation proofs. Automatically persists state across sessions."
+        "Creates, switches, lists, and closes CRS audit cases. Use to organize findings and patches per engagement. "
+        "Call with action set to create/switch/list/summary/note/close."
     )
     params = CaseManagerParams
     mutating = True

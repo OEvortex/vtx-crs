@@ -64,20 +64,19 @@ from pydantic import BaseModel, Field
 
 
 class DependencyScanParams(BaseModel):
-    repo_path: str = Field(default="", description="Absolute path to target repository root.")
-    ecosystems: list[str] = Field(default_factory=list, description="Target package ecosystems (e.g. ['PyPI', 'npm', 'crates.io', 'Go']). Empty auto-detects from manifest files.")
-    save_findings: bool = Field(default=True, description="Whether to persist discovered CVE/GHSA findings into active case ledger.")
+    repo_path: str = Field(default="", description="Project root path. Defaults to the active case repo.")
+    ecosystems: list[str] = Field(default_factory=list, description="Package ecosystems to scan (PyPI, npm, crates.io, Go). Empty auto-detects from manifests.")
+    save_findings: bool = Field(default=True, description="Persist discovered vulnerabilities to the active case ledger.")
     timeout_seconds: int = Field(default=30, description="Network timeout in seconds for OSV batch queries.")
-    enrich_kev_epss: bool = Field(default=True, description="Enrich with CISA Known Exploited Vulnerabilities (KEV) and FIRST EPSS exploit probabilities.")
-    run_local_audit: bool = Field(default=True, description="Execute local package auditors (pip-audit, npm audit, cargo audit) if available.")
+    enrich_kev_epss: bool = Field(default=True, description="Enrich findings with CISA KEV and FIRST EPSS scores.")
+    run_local_audit: bool = Field(default=True, description="Run local auditors (pip-audit, npm audit, cargo audit) if available.")
 
 
 class DependencyScannerTool(BaseTool[DependencyScanParams]):
     name = "dependency_scan"
     description = (
-        "Multi-Source Dependency Intelligence Engine (Phase 1): Audits project manifests across Python, JS/TS, Rust, and Go. "
-        "Batch-queries OSV for CVE/GHSA mappings, enriched with CISA KEV (actively exploited in the wild) and FIRST EPSS scores. "
-        "Provides precise fixed versions. Keyless and open-source."
+        "Audits project manifests for known vulnerabilities using OSV, CISA KEV, and EPSS. Use early to identify "
+        "outdated or exploited dependencies. Call with repo_path set to the project root."
     )
     params = DependencyScanParams
     mutating = False

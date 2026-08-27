@@ -27,21 +27,21 @@ from pydantic import BaseModel, Field
 
 
 class ServiceAnalyzeParams(BaseModel):
-    target: str = Field(default="", description="Target host or IP address to scan (e.g. '127.0.0.1', 'localhost').")
-    repo_path: str = Field(default="", description="Base repository path.")
+    target: str = Field(default="", description="Target host or IP address to scan (e.g. 127.0.0.1, localhost).")
+    repo_path: str = Field(default="", description="Working directory hint (defaults to 127.0.0.1 if target is empty).")
     ports: str = Field(
         default="21,22,23,25,53,80,110,143,443,445,993,995,3306,3389,5432,5900,6379,8080,8443,27017",
-        description="Comma-separated list of TCP port numbers to probe.",
+        description="Comma-separated TCP port numbers to probe.",
     )
-    timeout_seconds: int = Field(default=5, description="Per-port socket connection timeout in seconds.")
-    mode: str = Field(default="connect", description="Scan mode: 'connect' | 'banner' | 'identify'.")
+    timeout_seconds: int = Field(default=5, description="Per-port connection timeout in seconds.")
+    mode: str = Field(default="connect", description="Scan mode: connect, banner, or identify.")
 
 
 class ServiceAnalyzerTool(BaseTool[ServiceAnalyzeParams]):
     name = "service_analyze"
     description = (
-        "Network Service Reconnaissance (Phase 2): Audits TCP ports, grabs service banners, and fingerprints "
-        "daemon versions on local or authorized target systems."
+        "Probes TCP ports on a target host to discover open services and grab banners. Use during reconnaissance "
+        "to map external attack surface. Call with target set to the host/IP."
     )
     params = ServiceAnalyzeParams
     mutating = False

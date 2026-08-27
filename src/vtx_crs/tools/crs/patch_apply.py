@@ -30,19 +30,18 @@ from pydantic import BaseModel, Field
 
 
 class PatchApplyParams(BaseModel):
-    diff: str = Field(..., description="Unified diff formatted patch (--- / +++ / @@ hunks).")
-    repo_path: str = Field(default="", description="Target repository root path.")
-    finding_ids: list[str] = Field(default_factory=list, description="IDs of vulnerability findings resolved by this patch.")
+    diff: str = Field(..., description="Unified diff patch (--- / +++ / @@ hunks).")
+    repo_path: str = Field(default="", description="Project root path. Defaults to the active case repo.")
+    finding_ids: list[str] = Field(default_factory=list, description="IDs of findings this patch resolves.")
     summary: str = Field(default="", description="Short explanation of the fix mechanism.")
-    dry_run: bool = Field(default=False, description="If True, tests if patch applies cleanly without writing changes to disk.")
+    dry_run: bool = Field(default=False, description="Validate the patch without writing changes.")
 
 
 class PatchApplyTool(BaseTool[PatchApplyParams]):
     name = "patch_apply"
     description = (
-        "Surgical Patch Application Engine (Phase 3): Applies unified diffs to the repository. "
-        "Associates the patch with specific finding IDs and updates their status in the case ledger. "
-        "Supports dry_run to verify diff context before committing."
+        "Applies a unified diff patch to the repository and tracks it in the case ledger. Use after designing a fix. "
+        "Call with diff containing the unified patch; set dry_run to preview."
     )
     params = PatchApplyParams
     mutating = True

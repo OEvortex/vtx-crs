@@ -31,11 +31,11 @@ from pydantic import BaseModel, Field
 
 
 class SymbolicExecuteParams(BaseModel):
-    repo_path: str = Field(default="", description="Base repository or working directory path.")
-    target: str = Field(default="", description="Target binary or function to analyze.")
-    input_file: str = Field(default="", description="Initial input file for symbolic exploration.")
-    max_states: int = Field(default=100, description="Maximum number of symbolic exploration states.")
-    engine: str = Field(default="auto", description="Symbolic engine: 'auto' | 'angr' | 'concolic'.")
+    repo_path: str = Field(default="", description="Working directory for the target. Defaults to the active case repo.")
+    target: str = Field(default="", description="Path to the binary or function entry point to analyze.")
+    input_file: str = Field(default="", description="Seed input file for concolic mutation.")
+    max_states: int = Field(default=100, description="Maximum symbolic states to explore.")
+    engine: str = Field(default="auto", description="Symbolic engine: auto, angr, or concolic.")
 
 
 class SymbolicExecutorTool(BaseTool[SymbolicExecuteParams]):
@@ -43,8 +43,8 @@ class SymbolicExecutorTool(BaseTool[SymbolicExecuteParams]):
     # heavy dependencies (angr/z3). The tool selects the best available engine.
     name = "symbolic_execute"
     description = (
-        "Symbolic Execution & Path Solver (Phase 2): Explores complex branch constraints using angr (if available) "
-        "or concolic constraint inversion to generate inputs reaching deep execution paths."
+        "Explores execution paths through a binary using angr (if available) or concolic input mutation. "
+        "Use when fuzzing misses a path and you need guided inputs. Call with target set to the binary."
     )
     params = SymbolicExecuteParams
     mutating = False

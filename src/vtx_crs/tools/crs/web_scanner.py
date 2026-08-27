@@ -38,18 +38,18 @@ from pydantic import BaseModel, Field
 
 
 class WebScanParams(BaseModel):
-    target_url: str = Field(default="", description="Base URL of web application to scan (e.g. 'http://localhost:3000').")
-    repo_path: str = Field(default="", description="Base repository path.")
-    crawl_depth: int = Field(default=1, description="Crawl depth for link and form discovery (1-3).")
-    check_injection: bool = Field(default=True, description="Probe discovered forms/params with safe, non-destructive canary payloads.")
+    target_url: str = Field(default="", description="Base URL of the web application to scan (e.g. http://localhost:3000).")
+    repo_path: str = Field(default="", description="Repository root for URL inference if target_url is empty.")
+    crawl_depth: int = Field(default=1, description="Link and form discovery depth (1-3).")
+    check_injection: bool = Field(default=True, description="Probe forms/params with safe, non-destructive canary payloads.")
     timeout_seconds: int = Field(default=10, description="HTTP request timeout in seconds.")
 
 
 class WebScannerTool(BaseTool[WebScanParams]):
     name = "web_scan"
     description = (
-        "Web Application Vulnerability Scanner (Phase 2): Crawls web applications, fingerprints technology stacks, "
-        "and probes endpoints/forms with safe canary payloads for XSS, SQLi, SSTI, and path traversal."
+        "Crawls a web application and probes endpoints with safe canary payloads for XSS, SQLi, SSTI, and path traversal. "
+        "Use against running web apps in authorized environments. Call with target_url."
     )
     params = WebScanParams
     mutating = False

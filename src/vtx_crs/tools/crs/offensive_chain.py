@@ -29,21 +29,20 @@ from pydantic import BaseModel, Field
 
 
 class OffensiveChainParams(BaseModel):
-    repo_path: str = Field(default="", description="Base repository path.")
-    binary_path: str = Field(default="", description="Target compiled binary path (if evaluating binary protections).")
-    crash_file: str = Field(default="", description="Path to file containing crash output or raw input payload.")
+    repo_path: str = Field(default="", description="Repository root path. Defaults to the active case repo.")
+    binary_path: str = Field(default="", description="Path to the compiled binary for hardening checks.")
+    crash_file: str = Field(default="", description="Path to a file containing crash output or raw payload.")
     crash_text: str = Field(default="", description="Verbatim crash stack trace or error log.")
-    vuln_type: str = Field(default="", description="Vulnerability type (e.g. 'buffer-overflow', 'command-injection').")
-    generate_pov: bool = Field(default=True, description="Whether to automatically construct reproducible PoC script.")
-    pov_type: str = Field(default="python", description="Language format for PoC: 'python' | 'c' | 'rust'.")
+    vuln_type: str = Field(default="", description="Vulnerability type (e.g. buffer-overflow, command-injection).")
+    generate_pov: bool = Field(default=True, description="Automatically generate a reproducible PoC script.")
+    pov_type: str = Field(default="python", description="PoC language format: python, c, or rust.")
 
 
 class OffensiveChainTool(BaseTool[OffensiveChainParams]):
     name = "offensive_chain"
     description = (
-        "High-Performance Merged Offensive Engine (Phase 2): Chains crash_triage -> exploit_feasibility (mitigation matrix) "
-        "-> pov_generate into a single call. Transforms a raw crash or fault log into a verified feasibility assessment "
-        "and reproducible PoC. Always prefer over calling the 3 sub-tools separately."
+        "Merges crash_triage, exploit_feasibility, and pov_generate into one call. Use when you have a crash artifact "
+        "and need a full offensive assessment. Always prefer over calling the three tools separately. Call with crash_file or crash_text."
     )
     params = OffensiveChainParams
     mutating = True

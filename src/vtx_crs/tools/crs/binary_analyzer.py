@@ -28,16 +28,16 @@ from pydantic import BaseModel, Field
 
 
 class BinaryAnalyzeParams(BaseModel):
-    path: str = Field(default="", description="Path to binary file to analyze (ELF/PE/Mach-O).")
-    repo_path: str = Field(default="", description="Base repository or working directory path.")
-    analysis_type: str = Field(default="full", description="Analysis mode: 'full' | 'symbols' | 'strings' | 'sections' | 'imports'.")
+    path: str = Field(default="", description="Path to the binary file to analyze (ELF/PE/Mach-O).")
+    repo_path: str = Field(default="", description="Working directory hint if path is relative.")
+    analysis_type: str = Field(default="full", description="Scope of analysis: full, symbols, strings, sections, or imports.")
 
 
 class BinaryAnalyzerTool(BaseTool[BinaryAnalyzeParams]):
     name = "binary_analyze"
     description = (
-        "Binary Static & Hardening Inspector (Phase 2): Inspects ELF/PE/Mach-O binaries for symbols, dangerous imports "
-        "(system, gets, strcpy, exec), extracted strings (keys/URLs), and mitigation flags (NX, PIE, RELRO, Stack Canary, FORTIFY)."
+        "Inspects a compiled binary for symbols, dangerous imports, interesting strings, and hardening flags "
+        "(NX, PIE, RELRO, Canary, FORTIFY). Use on crash artifacts or compiled targets. Call with path set to the binary file."
     )
     params = BinaryAnalyzeParams
     mutating = False

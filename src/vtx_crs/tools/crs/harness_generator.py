@@ -29,19 +29,19 @@ from pydantic import BaseModel, Field
 
 
 class HarnessGenParams(BaseModel):
-    repo_path: str = Field(default="", description="Absolute path to target repository root.")
-    target_file: str = Field(default="", description="Path to source file containing the target entry point.")
-    target_function: str = Field(default="", description="Function name to wrap inside the driver/fuzz harness.")
-    language: str = Field(default="python", description="Target programming language: 'python' | 'c' | 'rust' | 'go' | 'js'.")
-    output_path: str = Field(default="", description="Custom output path for generated harness file.")
-    poc_type: str = Field(default="python", description="Target harness type / language format.")
+    repo_path: str = Field(default="", description="Project root path. Defaults to the active case repo.")
+    target_file: str = Field(default="", description="Source file containing the target entry point.")
+    target_function: str = Field(default="", description="Function name to wrap in the harness.")
+    language: str = Field(default="python", description="Target language: python, c, rust, go, or js.")
+    output_path: str = Field(default="", description="Custom output path for the generated harness file.")
+    poc_type: str = Field(default="python", description="Harness format/language: python, c, rust, go, or js.")
 
 
 class HarnessGeneratorTool(BaseTool[HarnessGenParams]):
     name = "harness_gen"
     description = (
-        "Driver & Fuzz Harness Generator (Phase 2): Generates standalone driver and fuzzer stubs (supporting LLVMFuzzerTestOneInput "
-        "and language-specific entry points) for a target function or sink. Imports target modules cleanly without stubbing out logic."
+        "Generates standalone fuzz/driver harnesses for a target function or binary. Use before fuzz_harness to create an entry point. "
+        "Call with target_file and poc_type."
     )
     params = HarnessGenParams
     mutating = True

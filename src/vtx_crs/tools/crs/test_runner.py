@@ -65,16 +65,16 @@ from pydantic import BaseModel, Field
 
 
 class TestRunParams(BaseModel):
-    repo_path: str = Field(default="", description="Target repository root path.")
-    command: str = Field(default="", description="Explicit test suite command. If empty, auto-detects (pytest, cargo test, npm test, go test).")
-    timeout_seconds: int = Field(default=900, description="Test suite execution timeout in seconds.")
+    repo_path: str = Field(default="", description="Project root path. Defaults to the active case repo.")
+    command: str = Field(default="", description="Test suite command. If empty, auto-detects (pytest, cargo test, npm test, go test).")
+    timeout_seconds: int = Field(default=900, description="Test execution timeout in seconds (default 900).")
 
 
 class TestRunnerTool(BaseTool[TestRunParams]):
     name = "run_tests"
     description = (
-        "Regression Test Suite Runner (Phase 4): Executes the codebase's existing unit/integration test suite. "
-        "Summarizes passed/failed test counts and ensures no functionality regression occurred due to patches."
+        "Runs the project's test suite and reports pass/fail counts. Use after patch_apply or build_runner to check for regressions. "
+        "Call with command for custom suites; otherwise auto-detects."
     )
     params = TestRunParams
     mutating = False

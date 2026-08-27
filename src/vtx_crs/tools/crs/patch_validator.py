@@ -31,18 +31,18 @@ from pydantic import BaseModel, Field
 
 
 class PatchValidateParams(BaseModel):
-    repo_path: str = Field(default="", description="Base repository path.")
-    patch_file: str = Field(default="", description="Path to patch diff file to validate.")
-    build_command: str = Field(default="python -m compileall -q .", description="Build command to execute inside the isolated sandbox.")
-    test_command: str = Field(default="", description="Regression test command to execute inside the isolated sandbox.")
-    strict_tests: bool = Field(default=True, description="Fail validation if any existing unit tests fail.")
+    repo_path: str = Field(default="", description="Project root path. Defaults to the active case repo.")
+    patch_file: str = Field(default="", description="Path to the patch diff file to validate.")
+    build_command: str = Field(default="python -m compileall -q .", description="Build command inside the sandbox (default: python -m compileall -q .).")
+    test_command: str = Field(default="", description="Regression test command inside the sandbox.")
+    strict_tests: bool = Field(default=True, description="Fail validation if any unit test fails.")
 
 
 class PatchValidatorTool(BaseTool[PatchValidateParams]):
     name = "patch_validate"
     description = (
-        "Hermetic Patch Sandbox Validator (Phase 4): Applies a patch in an isolated temporary clone of the codebase "
-        "and executes the project's build and test suites to verify that the fix builds cleanly without introducing regressions."
+        "Applies a patch in an isolated temp copy, then builds and runs tests to verify no regressions. "
+        "Use after patch_apply to validate fixes. Call with patch_file pointing to the diff."
     )
     params = PatchValidateParams
     mutating = True

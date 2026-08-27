@@ -31,16 +31,16 @@ from pydantic import BaseModel, Field
 
 
 class CrashTriageParams(BaseModel):
-    crash_file: str = Field(default="", description="Path to crash log or core dump report file.")
+    crash_file: str = Field(default="", description="Path to a crash log or core dump report file.")
     crash_text: str = Field(default="", description="Verbatim crash log text (ASan, UBSan, GDB stack trace, segfault output).")
-    repo_path: str = Field(default="", description="Base repository path for source line localization.")
+    repo_path: str = Field(default="", description="Repository root for source-line localization.")
 
 
 class CrashTriagerTool(BaseTool[CrashTriageParams]):
     name = "crash_triage"
     description = (
-        "Crash Artifact Classifier & Root-Cause Localizer (Phase 2): Parses sanitizer logs (ASan, UBSan, MSan), "
-        "segfault backtraces, and core dumps. Extracts faulting function, line number, memory fault type, and crash signals."
+        "Classifies crash artifacts (ASan, UBSan, segfaults, core dumps) and localizes the faulting function/line. "
+        "Use immediately after a crash is detected. Call with crash_text or crash_file."
     )
     params = CrashTriageParams
     mutating = False

@@ -31,19 +31,18 @@ _case_manager = get_case_manager()
 
 
 class UnifiedScanParams(BaseModel):
-    repo_path: str = Field(default="", description="Absolute path to target repository root.")
-    min_severity: str = Field(default="info", description="Minimum finding severity threshold: 'info' | 'low' | 'medium' | 'high' | 'critical'.")
-    save_findings: bool = Field(default=True, description="Whether to automatically persist discovered findings into active case ledger.")
-    include_taint: bool = Field(default=True, description="Whether to include source-to-sink taint analysis in the unified pass.")
-    timeout_seconds: int = Field(default=90, description="Maximum execution timeout for parallel sub-scanners in seconds.")
+    repo_path: str = Field(default="", description="Project root path. Defaults to the active case repo.")
+    min_severity: str = Field(default="info", description="Minimum finding severity: info, low, medium, high, or critical.")
+    save_findings: bool = Field(default=True, description="Automatically persist findings to the active case ledger.")
+    include_taint: bool = Field(default=True, description="Include source-to-sink taint analysis in the unified pass.")
+    timeout_seconds: int = Field(default=90, description="Timeout in seconds for parallel sub-scans.")
 
 
 class UnifiedScanTool(BaseTool[UnifiedScanParams]):
     name = "unified_scan"
     description = (
-        "High-Performance Merged Defensive Scanner (Phase 1): Executes SAST structural checks, rule patterns (semgrep/bandit/gitleaks "
-        "when available, plus internal regex engines), and taint analysis in parallel. Deduplicates results into a unified finding set. "
-        "Always prefer over running vuln_scan, sast_scan, and taint_analyze separately."
+        "Runs SAST, vuln pattern, external engine (semgrep/bandit/gitleaks), and taint scans in parallel. "
+        "Use as the default first-pass security scan. Always prefer over running sub-scanners separately. Call with repo_path."
     )
     params = UnifiedScanParams
     mutating = False

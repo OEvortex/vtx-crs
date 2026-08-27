@@ -30,19 +30,19 @@ from pydantic import BaseModel, Field
 
 
 class DynamicAnalyzeParams(BaseModel):
-    command: str = Field(..., description="Command string or script to execute under dynamic instrumentation.")
-    repo_path: str = Field(default="", description="Base repository or working directory path.")
+    command: str = Field(..., description="Shell command or script to execute under dynamic instrumentation.")
+    repo_path: str = Field(default="", description="Working directory for execution. Defaults to the active case repo.")
     timeout_seconds: int = Field(default=30, description="Execution timeout in seconds.")
-    strace: bool = Field(default=True, description="Enable strace syscall tracing (monitors execve, openat, mprotect, socket, etc.).")
-    ltrace: bool = Field(default=False, description="Enable ltrace library call tracing.")
-    env: dict[str, str] = Field(default_factory=dict, description="Custom environment variables for execution.")
+    strace: bool = Field(default=True, description="Enable strace syscall tracing.")
+    ltrace: bool = Field(default=False, description="Enable ltrace library-call tracing.")
+    env: dict[str, str] = Field(default_factory=dict, description="Extra environment variables for the execution environment.")
 
 
 class DynamicAnalyzerTool(BaseTool[DynamicAnalyzeParams]):
     name = "dynamic_analyze"
     description = (
-        "Dynamic Syscall & Runtime Tracer (Phase 2): Executes commands under strace/ltrace monitoring. "
-        "Captures syscall traces, abnormal exit codes, segfaults/signals, and unauthorized file/network/process operations."
+        "Executes a command under strace/ltrace monitoring to capture syscalls, crashes, and suspicious runtime behavior. "
+        "Use on binaries or scripts after static analysis. Call with command set to the target invocation."
     )
     params = DynamicAnalyzeParams
     mutating = False

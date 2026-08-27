@@ -30,17 +30,17 @@ from pydantic import BaseModel, Field
 
 
 class MitigationInjectParams(BaseModel):
-    repo_path: str = Field(default="", description="Target repository root path.")
-    mitigation: str = Field(default="stack_canary", description="Mitigation type: 'stack_canary' | 'aslr' | 'nx' | 'fortify' | 'safe_build_wrapper'.")
-    target: str = Field(default="", description="Specific build configuration file or target binary.")
-    dry_run: bool = Field(default=False, description="Preview mitigation changes without modifying files.")
+    repo_path: str = Field(default="", description="Project root path. Defaults to the active case repo.")
+    mitigation: str = Field(default="stack_canary", description="Mitigation type: stack_canary, fortify, nx, aslr, or safe_build_wrapper.")
+    target: str = Field(default="", description="Specific build file or binary to harden.")
+    dry_run: bool = Field(default=False, description="Preview changes without modifying files.")
 
 
 class MitigationInjectorTool(BaseTool[MitigationInjectParams]):
     name = "mitigation_inject"
     description = (
-        "Defense-in-Depth Mitigation Injector (Phase 3): Configures and injects compiler/linker hardening flags "
-        "(-fstack-protector-strong, -D_FORTIFY_SOURCE=2, -Wl,-z,relro,-z,now, -pie -fPIE) into build systems."
+        "Injects compiler and linker hardening flags (stack canary, RELRO, NX, FORTIFY) into build configurations. "
+        "Use after identifying missing mitigations in binary_analyze or exploit_feasibility. Call with mitigation set to the desired control."
     )
     params = MitigationInjectParams
     mutating = True

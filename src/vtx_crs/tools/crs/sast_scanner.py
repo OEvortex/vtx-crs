@@ -120,7 +120,7 @@ class SastScannerTool(BaseTool[SastScanParams]):
     name = "sast_scan"
     description = (
         "Structural static analysis for architectural security issues (unauthenticated routes, exposed binds, "
-        "deserialization, SSRF). Use alongside vuln_scan for layered coverage. Call with repo_path set to the project root."
+        "deserialization, SSRF). Internal engine used by unified_scan. Call with repo_path set to the project root."
     )
     params = SastScanParams
     mutating = False

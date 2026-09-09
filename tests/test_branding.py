@@ -24,17 +24,17 @@ def test_branding_injects_crs_tool_block_styles() -> None:
 
 def test_crs_block_class_added_to_crs_tool_blocks() -> None:
     """CRS ToolBlock subclasses must receive the ``crs-block`` CSS class."""
-    from vtx_crs.ui.blocks import VulnScannerBlock
+    from vtx_crs.ui.blocks import UnifiedScanBlock
 
-    class _FakeVulnScannerBlock(VulnScannerBlock):
+    class _FakeUnifiedScanBlock(UnifiedScanBlock):
         __module__ = "vtx_crs.ui.blocks"
 
-    block = _FakeVulnScannerBlock.__new__(_FakeVulnScannerBlock)
+    block = _FakeUnifiedScanBlock.__new__(_FakeUnifiedScanBlock)
     # We cannot call __init__ without a full textual app, but we can invoke
     # the patched init directly and verify the class is added.
     from vtx.tui.blocks import ToolBlock
 
-    ToolBlock.__init__(block, name="vuln_scan")
+    ToolBlock.__init__(block, name="unified_scan")
     assert block.has_class("crs-block")
 
 
@@ -58,25 +58,24 @@ def test_crs_blocks_respect_expand_collapse() -> None:
         crs_blocks.RepoAnalyzerBlock,
         crs_blocks.BuildRunnerBlock,
         crs_blocks.TestRunnerBlock,
-        crs_blocks.SecurityValidatorBlock,
-        crs_blocks.VulnScannerBlock,
-        crs_blocks.SastScannerBlock,
         crs_blocks.DependencyScannerBlock,
         crs_blocks.BinaryAnalyzerBlock,
         crs_blocks.ServiceAnalyzerBlock,
-        crs_blocks.TaintAnalyzerBlock,
         crs_blocks.CallGraphBlock,
         crs_blocks.CoverageAnalyzerBlock,
-        crs_blocks.CrashTriagerBlock,
         crs_blocks.FuzzHarnessBlock,
         crs_blocks.DynamicAnalyzerBlock,
         crs_blocks.HarnessGeneratorBlock,
-        crs_blocks.PovGeneratorBlock,
         crs_blocks.SymbolicExecutorBlock,
         crs_blocks.PatchValidatorBlock,
         crs_blocks.ReportGeneratorBlock,
         crs_blocks.MitigationInjectorBlock,
         crs_blocks.PatchApplyBlock,
+        crs_blocks.AttackSurfaceBlock,
+        crs_blocks.UnifiedScanBlock,
+        crs_blocks.OffensiveChainBlock,
+        crs_blocks.WebScannerBlock,
+        crs_blocks.CaseManagerBlock,
     ]
 
     for block_cls in custom_blocks:

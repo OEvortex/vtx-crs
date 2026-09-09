@@ -43,7 +43,7 @@ class PovGeneratorTool(BaseTool[PovGenerateParams]):
     name = "pov_generate"
     description = (
         "Generates a minimal, standalone proof-of-concept script that reproduces a vulnerability trigger. "
-        "Use after crash_triage to create a safe reproducer. Call with crash_input and poc_type."
+        "Internal engine used by offensive_chain. Call with crash_input and poc_type."
     )
     params = PovGenerateParams
     mutating = True

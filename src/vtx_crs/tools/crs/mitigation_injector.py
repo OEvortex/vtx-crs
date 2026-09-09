@@ -40,7 +40,7 @@ class MitigationInjectorTool(BaseTool[MitigationInjectParams]):
     name = "mitigation_inject"
     description = (
         "Injects compiler and linker hardening flags (stack canary, RELRO, NX, FORTIFY) into build configurations. "
-        "Use after identifying missing mitigations in binary_analyze or exploit_feasibility. Call with mitigation set to the desired control."
+        "Use after identifying missing mitigations in binary_analyze or offensive_chain. Call with mitigation set to the desired control."
     )
     params = MitigationInjectParams
     mutating = True

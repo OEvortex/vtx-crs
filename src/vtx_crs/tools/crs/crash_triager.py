@@ -40,7 +40,7 @@ class CrashTriagerTool(BaseTool[CrashTriageParams]):
     name = "crash_triage"
     description = (
         "Classifies crash artifacts (ASan, UBSan, segfaults, core dumps) and localizes the faulting function/line. "
-        "Use immediately after a crash is detected. Call with crash_text or crash_file."
+        "Internal engine used by offensive_chain. Call with crash_text or crash_file."
     )
     params = CrashTriageParams
     mutating = False
@@ -108,7 +108,7 @@ class CrashTriagerTool(BaseTool[CrashTriageParams]):
                 confidence=0.6,
                 file_path=location or str(repo) if 'repo' in locals() else "unknown",
                 evidence=[text[:1000]],
-                remediation="Reproduce with harness, enable ASan, patch bounds checks, re-run exploit_feasibility.",
+                remediation="Reproduce with harness, enable ASan, patch bounds checks, re-run offensive_chain.",
                 status=FindingStatus.OPEN,
                 source="crash_triage",
                 metadata={"crash_type": crash_type, "location": location or "", "signals": signals},

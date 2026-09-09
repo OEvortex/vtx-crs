@@ -166,6 +166,85 @@ class CaseManagerBlock(ToolBlock):
             result.append(self._ui_summary, style=colors.muted)
         return result
 
+    def _render_result_output(self) -> None:
+        if not self._ui_details:
+            return super()._render_result_output()
+        if not self._expanded:
+            # Modern collapsed — few lines preview (default collapsed)
+            try:
+                output = self.query_one("#tool-output", Label)
+            except Exception:
+                return
+            output.remove_class("-hidden")
+            output.add_class("-details")
+            self.add_class("-compact")
+            self.remove_class("-with-details")
+            output.update(_collapsed_preview(self._ui_details or ""))
+            return
+        try:
+            output = self.query_one("#tool-output", Label)
+        except Exception:
+            return
+
+        rendered = Text()
+        for line in self._ui_details.splitlines():
+            stripped = line.rstrip()
+            if not stripped:
+                rendered.append("\n")
+                continue
+            if (
+                stripped.startswith("Case:")
+                or stripped.startswith("Findings detail")
+                or stripped.startswith("Patches (")
+                or stripped.startswith("Timeline (")
+                or stripped.startswith("Notes (")
+                or stripped.endswith(" case(s):")
+            ):
+                rendered.append_text(_section(stripped))
+            elif stripped.startswith("Findings:") or stripped.startswith("Patches:") or stripped.startswith("Repo:") or stripped.startswith("Status:"):
+                rendered.append(f"  {stripped}\n", style=f"{config.ui.colors.accent} bold")
+            elif stripped.startswith("  critical:"):
+                rendered.append(f"  {stripped}\n", style=_sev_color("critical"))
+            elif stripped.startswith("  high:"):
+                rendered.append(f"  {stripped}\n", style=_sev_color("high"))
+            elif stripped.startswith("  medium:"):
+                rendered.append(f"  {stripped}\n", style=_sev_color("medium"))
+            elif stripped.startswith("  low:") or stripped.startswith("  info:"):
+                rendered.append(f"  {stripped}\n", style=_sev_color("low"))
+            elif stripped.startswith("ID             SEV"):
+                rendered.append(f"    {stripped}\n", style=f"{config.ui.colors.muted} bold")
+            elif stripped.startswith("---"):
+                rendered.append(f"    {stripped}\n", style=config.ui.colors.dim)
+            elif stripped.startswith("  ↳"):
+                rendered.append(f"    {stripped}\n", style=config.ui.colors.dim)
+            elif stripped.startswith("  fix:"):
+                rendered.append(f"    {stripped}\n", style=config.ui.colors.notice)
+            elif stripped.startswith("  "):
+                parts = stripped.strip().split(None, 4)
+                if len(parts) >= 2 and parts[1].lower() in _SEV_RANK:
+                    fid, sev, cwe, loc = parts[0], parts[1], parts[2] if len(parts) > 2 else "", parts[3] if len(parts) > 3 else ""
+                    rest = parts[4] if len(parts) > 4 else ""
+                    rendered.append_text(
+                        _row(
+                            (f"{fid:<14}", config.ui.colors.muted),
+                            (f"[{sev.upper():<8}]", _sev_color(sev)),
+                            (f"{cwe:<10}", config.ui.colors.muted),
+                            (f"{loc:<32}", config.ui.colors.fg),
+                            (rest, config.ui.colors.fg),
+                        )
+                    )
+                    rendered.append("\n")
+                else:
+                    rendered.append(f"  {stripped.strip()}\n", style=config.ui.colors.fg)
+            else:
+                rendered.append(f"  {stripped}\n", style=config.ui.colors.fg)
+
+        self.remove_class("-compact")
+        self.add_class("-with-details")
+        output.remove_class("-hidden")
+        output.remove_class("-details")
+        output.update(rendered)
+
 
 # ---------------------------------------------------------------------------
 # Repository analyzer: language/build/structure summary
@@ -234,7 +313,7 @@ class RepoAnalyzerBlock(ToolBlock):
 
 
 # ---------------------------------------------------------------------------
-# Build / test / security-validate: command runner blocks
+# Build / test / patch-validate: command runner blocks
 # ---------------------------------------------------------------------------
 
 class _CommandRunnerBlock(ToolBlock):
@@ -309,82 +388,7 @@ class TestRunnerBlock(_CommandRunnerBlock):
     pass
 
 
-class SecurityValidatorBlock(_CommandRunnerBlock):
-    pass
 
-
-# ---------------------------------------------------------------------------
-# Vulnerability scanner: severity-bucketed table
-# ---------------------------------------------------------------------------
-
-class VulnScannerBlock(ToolBlock):
-    def _format_header(self, truncate: bool = True) -> Text:
-        colors = config.ui.colors
-        result = Text()
-        result.append(f"{self._icon} ", style=colors.failed)
-        result.append("vuln_scan", style=f"{colors.failed} bold")
-        if self._ui_summary:
-            result.append("  ")
-            result.append(self._ui_summary, style=colors.muted)
-        return result
-
-    def _render_result_output(self) -> None:
-        if not self._ui_details:
-            return super()._render_result_output()
-        if not self._expanded:
-            # Modern collapsed — few lines preview (default collapsed)
-            try:
-                output = self.query_one("#tool-output", Label)
-            except Exception:
-                return
-            output.remove_class("-hidden")
-            output.add_class("-details")
-            self.add_class("-compact")
-            self.remove_class("-with-details")
-            output.update(_collapsed_preview(self._ui_details or ""))
-            return
-        try:
-            output = self.query_one("#tool-output", Label)
-        except Exception:
-            return
-
-        rendered = Text()
-        rendered.append_text(_section("findings"))
-        # Lines look like: "<id>  <sev>  <cwe>  <path:line>"
-        any_row = False
-        for line in self._ui_details.splitlines():
-            stripped = line.rstrip()
-            if not stripped or stripped.startswith("Pattern") or stripped.startswith("---"):
-                continue
-            parts = stripped.split(None, 3)
-            if len(parts) == 4 and not parts[0].startswith("-"):
-                fid, sev, cwe, loc = parts
-                rendered.append_text(
-                    _row(
-                        (f"{fid:<10}", config.ui.colors.muted),
-                        (f"[{sev.upper():<8}]", _sev_color(sev)),
-                        (f"{cwe:<10}", config.ui.colors.muted),
-                        (loc, config.ui.colors.fg),
-                    )
-                )
-                rendered.append("\n")
-                any_row = True
-            else:
-                rendered.append(f"    {stripped}\n", style=config.ui.colors.fg)
-        if not any_row:
-            rendered.append("    (no findings)\n", style=config.ui.colors.muted)
-
-        self.remove_class("-compact")
-        self.add_class("-with-details")
-        output.remove_class("-hidden")
-        output.remove_class("-details")
-        output.update(rendered)
-
-
-# ---------------------------------------------------------------------------
-# Dependency scanner: same severity-bucketed style, but data is
-# "name version: OSV-id  [SEV]  (CWE) — remediation"
-# ---------------------------------------------------------------------------
 
 class DependencyScannerBlock(ToolBlock):
     def _format_header(self, truncate: bool = True) -> Text:
@@ -446,12 +450,7 @@ class DependencyScannerBlock(ToolBlock):
         output.update(rendered)
 
 
-# ---------------------------------------------------------------------------
-# SAST scanner: same look as vuln_scan
-# ---------------------------------------------------------------------------
 
-class SastScannerBlock(VulnScannerBlock):
-    pass
 
 
 # ---------------------------------------------------------------------------
@@ -601,78 +600,6 @@ class ServiceAnalyzerBlock(ToolBlock):
         output.remove_class("-hidden")
         output.remove_class("-details")
         output.update(rendered)
-
-
-# ---------------------------------------------------------------------------
-# Taint analyzer: file/line/sources/sinks grid
-# ---------------------------------------------------------------------------
-
-class TaintAnalyzerBlock(ToolBlock):
-    def _format_header(self, truncate: bool = True) -> Text:
-        colors = config.ui.colors
-        result = Text()
-        result.append(f"{self._icon} ", style=colors.notice)
-        result.append("taint_analyze", style=f"{colors.notice} bold")
-        if self._ui_summary:
-            result.append("  ")
-            result.append(self._ui_summary, style=colors.muted)
-        return result
-
-    def _render_result_output(self) -> None:
-        if not self._ui_details:
-            return super()._render_result_output()
-        if not self._expanded:
-            # Modern collapsed — few lines preview (default collapsed)
-            try:
-                output = self.query_one("#tool-output", Label)
-            except Exception:
-                return
-            output.remove_class("-hidden")
-            output.add_class("-details")
-            self.add_class("-compact")
-            self.remove_class("-with-details")
-            output.update(_collapsed_preview(self._ui_details or ""))
-            return
-        try:
-            output = self.query_one("#tool-output", Label)
-        except Exception:
-            return
-        rendered = Text()
-        for line in self._ui_details.splitlines():
-            stripped = line.rstrip()
-            if not stripped or stripped.startswith("---") or stripped.startswith("FILE "):
-                continue
-            if stripped.startswith("Taint analysis:"):
-                rendered.append_text(_section("flows"))
-                continue
-            if "  " in stripped and len(stripped.split()) >= 4:
-                parts = stripped.split(None, 3)
-                if len(parts) == 4:
-                    file_, ln, sources, sinks = parts
-                    rendered.append_text(
-                        _row(
-                            (f"{file_:<26}", config.ui.colors.muted),
-                            (f"L{ln:<5}", config.ui.colors.accent),
-                            (f"src: {sources:<18}", config.ui.colors.notice),
-                            (f"sink: {sinks}", config.ui.colors.failed),
-                        )
-                    )
-                    rendered.append("\n")
-                    continue
-            # fall-through: code lines like "    foo()"
-            rendered.append(f"    {stripped.lstrip()}\n", style=config.ui.colors.dim)
-
-        self.remove_class("-compact")
-        self.add_class("-with-details")
-        output.remove_class("-hidden")
-        output.remove_class("-details")
-        output.update(rendered)
-
-
-# ---------------------------------------------------------------------------
-# Call graph: file -> functions list
-# ---------------------------------------------------------------------------
-
 class CallGraphBlock(ToolBlock):
     def _format_header(self, truncate: bool = True) -> Text:
         colors = config.ui.colors
@@ -796,85 +723,6 @@ class CoverageAnalyzerBlock(ToolBlock):
         output.remove_class("-hidden")
         output.remove_class("-details")
         output.update(rendered)
-
-
-# ---------------------------------------------------------------------------
-# Crash triager: crash type badge + signals
-# ---------------------------------------------------------------------------
-
-class CrashTriagerBlock(ToolBlock):
-    def _format_header(self, truncate: bool = True) -> Text:
-        colors = config.ui.colors
-        result = Text()
-        result.append(f"{self._icon} ", style=colors.failed)
-        result.append("crash_triage", style=f"{colors.failed} bold")
-        if self._ui_summary:
-            result.append("  ")
-            result.append(self._ui_summary, style=colors.muted)
-        return result
-
-    def _render_result_output(self) -> None:
-        if not self._ui_details:
-            return super()._render_result_output()
-        if not self._expanded:
-            # Modern collapsed — few lines preview (default collapsed)
-            try:
-                output = self.query_one("#tool-output", Label)
-            except Exception:
-                return
-            output.remove_class("-hidden")
-            output.add_class("-details")
-            self.add_class("-compact")
-            self.remove_class("-with-details")
-            output.update(_collapsed_preview(self._ui_details or ""))
-            return
-        try:
-            output = self.query_one("#tool-output", Label)
-        except Exception:
-            return
-        rendered = Text()
-        section = ""
-        for line in self._ui_details.splitlines():
-            stripped = line.rstrip()
-            if not stripped:
-                continue
-            if stripped.startswith("Crash type:"):
-                rendered.append_text(_section("crash type"))
-                rendered.append(
-                    f"    {stripped.split(':', 1)[1].strip()}\n",
-                    style=f"{config.ui.colors.failed} bold",
-                )
-            elif stripped.startswith("Faulting location:"):
-                rendered.append_text(_section("faulting location"))
-                rendered.append(
-                    f"    {stripped.split(':', 1)[1].strip() or 'unknown'}\n",
-                    style=config.ui.colors.fg,
-                )
-            elif stripped.startswith("Signals"):
-                rendered.append_text(_section("signals"))
-            elif stripped.startswith("Remediation"):
-                rendered.append_text(_section("remediation"))
-            elif stripped.startswith("- ") and (
-                section == "signals" or "signals" in rendered.plain.split("\n")[-3:]
-            ):
-                rendered.append_text(_bullet(Text(stripped[2:], style=config.ui.colors.notice)))
-                rendered.append("\n")
-            elif stripped[:2] in (" 1", " 2", " 3", " 4"):
-                rendered.append(f"    {stripped.strip()}\n", style=config.ui.colors.dim)
-            else:
-                rendered.append(f"    {stripped}\n", style=config.ui.colors.fg)
-
-        self.remove_class("-compact")
-        self.add_class("-with-details")
-        output.remove_class("-hidden")
-        output.remove_class("-details")
-        output.update(rendered)
-
-
-# ---------------------------------------------------------------------------
-# Fuzz harness: campaign stats + crash list
-# ---------------------------------------------------------------------------
-
 class FuzzHarnessBlock(ToolBlock):
     def _format_header(self, truncate: bool = True) -> Text:
         colors = config.ui.colors
@@ -1015,15 +863,11 @@ class HarnessGeneratorBlock(_ArtifactBlock):
     pass
 
 
-class PovGeneratorBlock(_ArtifactBlock):
-    pass
-
-
 class SymbolicExecutorBlock(_ArtifactBlock):
     pass
 
 
-class PatchValidatorBlock(_ArtifactBlock):
+class PatchValidatorBlock(_CommandRunnerBlock):
     pass
 
 
@@ -1101,72 +945,6 @@ class PatchApplyBlock(ToolBlock):
 
 class MitigationInjectorBlock(_ArtifactBlock):
     pass
-
-
-# ---------------------------------------------------------------------------
-# Offensive+Defensive unified blocks (RAPTOR + OSS-CRS inspired)
-# ---------------------------------------------------------------------------
-
-class ExploitFeasibilityBlock(ToolBlock):
-    def _format_header(self, truncate: bool = True) -> Text:
-        colors = config.ui.colors
-        # Offensive -> red if exploitable, defensive green if blocked
-        verdict = (self._ui_summary or "").lower()
-        is_bad = "exploitable" in verdict and "unverified" not in verdict and "constrained" not in verdict
-        is_blocked = "blocked" in verdict
-        style = colors.failed if is_bad else colors.success if is_blocked else colors.notice
-        result = Text()
-        result.append(f"{self._icon} ", style=style)
-        result.append("exploit_feasibility", style=f"{style} bold")
-        if self._ui_summary:
-            result.append("  ")
-            result.append(self._ui_summary, style=colors.muted)
-        return result
-
-    def _render_result_output(self) -> None:
-        if not self._ui_details:
-            return super()._render_result_output()
-        if not self._expanded:
-            try:
-                output = self.query_one("#tool-output", Label)
-            except Exception:
-                return
-            output.remove_class("-hidden")
-            output.add_class("-details")
-            self.add_class("-compact")
-            self.remove_class("-with-details")
-            output.update(_collapsed_preview(self._ui_details or ""))
-            return
-        try:
-            output = self.query_one("#tool-output", Label)
-        except Exception:
-            return
-        rendered = Text()
-        for line in self._ui_details.splitlines():
-            stripped = line.rstrip()
-            if not stripped:
-                continue
-            if stripped.startswith("## "):
-                rendered.append_text(_section(stripped[3:]))
-            elif stripped.startswith("### "):
-                rendered.append(f"\n  {stripped[4:]}\n", style=f"{config.ui.colors.accent} bold")
-            elif stripped.startswith("- "):
-                body = stripped[2:]
-                if "exploitable" in body.lower():
-                    rendered.append_text(_bullet(Text(body, style=config.ui.colors.failed)))
-                elif "blocked" in body.lower() or "enabled" in body.lower():
-                    rendered.append_text(_bullet(Text(body, style=config.ui.colors.success)))
-                else:
-                    rendered.append_text(_bullet(Text(body, style=config.ui.colors.fg)))
-                rendered.append("\n")
-            else:
-                rendered.append(f"    {stripped}\n", style=config.ui.colors.fg)
-        self.remove_class("-compact")
-        self.add_class("-with-details")
-        output.remove_class("-hidden")
-        output.remove_class("-details")
-        output.update(rendered)
-
 
 class WebScannerBlock(ToolBlock):
     def _format_header(self, truncate: bool = True) -> Text:
@@ -1403,17 +1181,11 @@ _TOOL_BLOCKS: dict[str, type[ToolBlock]] = {
     "dependency_scan": DependencyScannerBlock,
     "repo_analyze": RepoAnalyzerBlock,
     "run_tests": TestRunnerBlock,
-    "sast_scan": SastScannerBlock,
-    "taint_analyze": TaintAnalyzerBlock,
-    "vuln_scan": VulnScannerBlock,
     # Offensive core (red) — merged chain at top
     "offensive_chain": OffensiveChainBlock,
-    "crash_triage": CrashTriagerBlock,
     "dynamic_analyze": DynamicAnalyzerBlock,
-    "exploit_feasibility": ExploitFeasibilityBlock,
     "fuzz_target": FuzzHarnessBlock,
     "harness_gen": HarnessGeneratorBlock,
-    "pov_generate": PovGeneratorBlock,
     "service_analyze": ServiceAnalyzerBlock,
     "symbolic_execute": SymbolicExecutorBlock,
     "web_scan": WebScannerBlock,
@@ -1422,7 +1194,6 @@ _TOOL_BLOCKS: dict[str, type[ToolBlock]] = {
     "mitigation_inject": MitigationInjectorBlock,
     "patch_apply": PatchApplyBlock,
     "patch_validate": PatchValidatorBlock,
-    "security_validate": SecurityValidatorBlock,
 }
 
 
@@ -1445,28 +1216,21 @@ __all__ = [
     "CallGraphBlock",
     "CaseManagerBlock",
     "CoverageAnalyzerBlock",
-    "CrashTriagerBlock",
     "DefaultCrsBlock",
     "DependencyScannerBlock",
     "DynamicAnalyzerBlock",
-    "ExploitFeasibilityBlock",
     "FuzzHarnessBlock",
     "HarnessGeneratorBlock",
     "MitigationInjectorBlock",
     "OffensiveChainBlock",
     "PatchApplyBlock",
     "PatchValidatorBlock",
-    "PovGeneratorBlock",
     "RepoAnalyzerBlock",
     "ReportGeneratorBlock",
-    "SastScannerBlock",
-    "SecurityValidatorBlock",
     "ServiceAnalyzerBlock",
     "SymbolicExecutorBlock",
-    "TaintAnalyzerBlock",
     "TestRunnerBlock",
     "UnifiedScanBlock",
-    "VulnScannerBlock",
     "WebScannerBlock",
     "register_crs_blocks",
 ]

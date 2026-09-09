@@ -1,6 +1,6 @@
 """Attack surface & threat-model synthesis (defensive).
 
-Combines repo_analyze + service_analyze + taint_analyze signals into a
+Combines repo_analyze + service_analyze signals into a
 structured threat model, similar to RAPTOR threat-model.json / OSS-CRS target analysis.
 """
 
@@ -127,13 +127,13 @@ class AttackSurfaceTool(BaseTool[AttackSurfaceParams]):
         lines.extend([
             "",
             "### Prioritization (defensive)",
-            "1. Patch unauthenticated entry -> sink flows first (taint_analyze).",
+            "- Patch unauthenticated entry -> sink flows first (see taint flows in unified_scan).",
             "2. Harden network binds (mitigation_inject).",
-            "3. Validate fixes with security_validate + patch_validate.",
+            "3. Validate fixes with patch_validate.",
             "",
             "### Offensive use",
             "- Focus fuzz_target/dynamic_analyze on entry points above.",
-            "- Craft PoCs via pov_generate for each sink near an entry point.",
+            "- Craft PoCs via offensive_chain for each sink near an entry point.",
         ])
         text = "\n".join(lines)
         return ToolResult(success=True, result=text, ui_summary=f"Attack surface: {len(entry_points)} entries, {len(auth_gaps)} auth gaps", ui_details=text)

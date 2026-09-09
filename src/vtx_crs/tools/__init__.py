@@ -13,27 +13,20 @@ from .crs.build_runner import BuildRunnerTool
 from .crs.call_graph import CallGraphTool
 from .crs.case_manager import CaseManagerTool
 from .crs.coverage_analyzer import CoverageAnalyzerTool
-from .crs.crash_triager import CrashTriagerTool
 from .crs.dependency_scanner import DependencyScannerTool
 from .crs.dynamic_analyzer import DynamicAnalyzerTool
-from .crs.exploit_feasibility import ExploitFeasibilityTool
 from .crs.fuzz_harness import FuzzHarnessTool
 from .crs.harness_generator import HarnessGeneratorTool
 from .crs.mitigation_injector import MitigationInjectorTool
 from .crs.offensive_chain import OffensiveChainTool
 from .crs.patch_apply import PatchApplyTool
 from .crs.patch_validator import PatchValidatorTool
-from .crs.pov_generator import PovGeneratorTool
 from .crs.repo_analyzer import RepoAnalyzerTool
 from .crs.report_generator import ReportGeneratorTool
-from .crs.sast_scanner import SastScannerTool
-from .crs.security_validator import SecurityValidatorTool
 from .crs.service_analyzer import ServiceAnalyzerTool
 from .crs.symbolic_executor import SymbolicExecutorTool
-from .crs.taint_analyzer import TaintAnalyzerTool
 from .crs.test_runner import TestRunnerTool
 from .crs.unified_scan import UnifiedScanTool
-from .crs.vuln_scanner import VulnScannerTool
 from .crs.web_scanner import WebScannerTool
 
 CRS_TOOLS = [
@@ -41,31 +34,24 @@ CRS_TOOLS = [
     RepoAnalyzerTool(),
     AttackSurfaceTool(),
     UnifiedScanTool(),  # merged: vuln_scan + sast_scan + taint_analyze (3-in-1, OP)
-    VulnScannerTool(),  # keep for granular use, but unified_scan is preferred
-    SastScannerTool(),  # alias, shares engine
     DependencyScannerTool(),  # OP: OSV + KEV + EPSS + pip-audit/npm audit
-    TaintAnalyzerTool(),
     CallGraphTool(),
     CoverageAnalyzerTool(),
     # Offensive core (RAPTOR-style) — OP merged chain
     OffensiveChainTool(),  # merged: crash_triage + exploit_feasibility + pov_generate (3-in-1, OP)
-    CrashTriagerTool(),
     BinaryAnalyzerTool(),
     DynamicAnalyzerTool(),
     FuzzHarnessTool(),
     HarnessGeneratorTool(),
-    PovGeneratorTool(),
     SymbolicExecutorTool(),
     ServiceAnalyzerTool(),
     WebScannerTool(),
-    ExploitFeasibilityTool(),
     # Remediation (OSS-CRS libCRS-style)
     PatchApplyTool(),
-    PatchValidatorTool(),
+    PatchValidatorTool(),  # merged: security_validate (re-run PoC) + build/test validation
     MitigationInjectorTool(),
     BuildRunnerTool(),
     TestRunnerTool(),
-    SecurityValidatorTool(),
     ReportGeneratorTool(),
     CaseManagerTool(),
 ]
@@ -134,6 +120,10 @@ def register_with_vtx() -> None:
     merged_tools_by_name.update(tools_by_name)
     vtx_tools.tools_by_name = merged_tools_by_name
 
+    for tool in all_tools:
+        if tool.name not in [t.name for t in vtx_tools.all_tools]:
+            vtx_tools.all_tools.append(tool)
+
     merged_defaults = list(vtx_tools.DEFAULT_TOOLS)
     for name in DEFAULT_TOOLS:
         if name not in merged_defaults:
@@ -141,6 +131,19 @@ def register_with_vtx() -> None:
     merged_defaults = [name for name in merged_defaults if name not in DENIED_TOOLS]
     vtx_tools.DEFAULT_TOOLS = merged_defaults
     vtx_app.DEFAULT_TOOLS = merged_defaults
+
+    try:
+        import vtx.ai.agent.tools as vtx_ai_tools
+
+        for tool in all_tools:
+            if tool.name not in DENIED_TOOLS:
+                vtx_ai_tools.register_tool(tool, is_default=True)
+
+        vtx_ai_tools._DEFAULT_TOOL_NAMES[:] = [
+            name for name in vtx_ai_tools._DEFAULT_TOOL_NAMES if name not in DENIED_TOOLS
+        ]
+    except Exception:
+        pass
 
     # Attach the custom CRS tool blocks. Done after vtx's own registers
     # so we win on the same `tools_by_name` dict.
@@ -160,27 +163,20 @@ __all__ = [
     "CallGraphTool",
     "CaseManagerTool",
     "CoverageAnalyzerTool",
-    "CrashTriagerTool",
     "DependencyScannerTool",
     "DynamicAnalyzerTool",
-    "ExploitFeasibilityTool",
     "FuzzHarnessTool",
     "HarnessGeneratorTool",
     "MitigationInjectorTool",
     "OffensiveChainTool",
     "PatchApplyTool",
     "PatchValidatorTool",
-    "PovGeneratorTool",
     "RepoAnalyzerTool",
     "ReportGeneratorTool",
-    "SastScannerTool",
-    "SecurityValidatorTool",
     "ServiceAnalyzerTool",
     "SymbolicExecutorTool",
-    "TaintAnalyzerTool",
     "TestRunnerTool",
     "UnifiedScanTool",
-    "VulnScannerTool",
     "WebScannerTool",
     "all_tools",
     "get_tool",

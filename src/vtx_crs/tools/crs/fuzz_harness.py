@@ -124,7 +124,7 @@ class FuzzHarnessTool(BaseTool[FuzzParams]):
                             confidence=0.65,
                             file_path=str(repo),
                             evidence=[cr.get('output','')[:500], f"input hex: {cr.get('input','')[:100]}"],
-                            remediation="Triaged via crash_triage; patch bounds checks, enable ASan, re-run harness.",
+                            remediation="Triaged via offensive_chain; patch bounds checks, enable ASan, re-run harness.",
                             status=FindingStatus.OPEN,
                             source="fuzz_target",
                             metadata={"fuzzer": fuzzer, "signal": cr.get('signal'), "input": cr.get('input','')[:100]},

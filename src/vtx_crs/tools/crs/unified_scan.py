@@ -231,10 +231,10 @@ class UnifiedScanTool(BaseTool[UnifiedScanParams]):
             "",
             "### Next (offensive validation)",
             "- For each high/critical: confirm by reading file:line",
-            "- Then harness_gen -> fuzz_target / dynamic_analyze -> crash_triage -> exploit_feasibility -> pov_generate",
+            "- Then harness_gen -> fuzz_target / dynamic_analyze -> offensive_chain for crash-to-PoC",
             "",
             "### Next (defensive hardening)",
-            "- patch_apply (dry_run) -> patch_validate -> build_project -> run_tests -> security_validate -> generate_report",
+            "- patch_apply (dry_run) -> patch_validate (includes security validation) -> build_project -> run_tests -> generate_report",
         ])
 
         text = "\n".join(sections)

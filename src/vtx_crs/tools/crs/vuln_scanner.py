@@ -298,7 +298,7 @@ class VulnScannerTool(BaseTool[VulnScanParams]):
     name = "vuln_scan"
     description = (
         "Pattern-based vulnerability scanner with CWE-mapped rules and optional semgrep/bandit/gitleaks. "
-        "Use for granular source inspections. Call with repo_path; prefer unified_scan for full repo sweeps."
+        "Internal engine used by unified_scan. Call with repo_path."
     )
     params = VulnScanParams
     mutating = False

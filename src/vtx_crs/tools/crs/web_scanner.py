@@ -114,7 +114,7 @@ class WebScannerTool(BaseTool[WebScanParams]):
             "### Defensive notes",
             "- Sanitize all reflected params; enforce CSP for XSS.",
             "- Use parameterized queries for SQLi candidates.",
-            "- Validate path traversal probes with security_validate.",
+            "- Validate injection points with patch_validate."
         ])
         text = "\n".join(lines)
         # Persist injection hits as findings

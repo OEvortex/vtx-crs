@@ -155,7 +155,7 @@ class CaseManagerTool(BaseTool[CaseManagerParams]):
                     lines.append(f"  fix: {f.remediation[:80]}")
         else:
             lines.append("")
-            lines.append("No findings yet — run unified_scan (or vuln_scan/sast_scan) with save_findings=true, or dependency_scan. All tools auto-save to this case now.")
+            lines.append("No findings yet — run unified_scan with save_findings=true, or dependency_scan. All tools auto-save to this case now.")
 
         if case.patches:
             lines.append("")

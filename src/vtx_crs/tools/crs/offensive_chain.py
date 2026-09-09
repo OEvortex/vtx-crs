@@ -133,7 +133,7 @@ class OffensiveChainTool(BaseTool[OffensiveChainParams]):
         sections.extend([
             "",
             "### Next (defensive)",
-            "- If feasibility is exploitable/likely: craft patch, then patch_apply -> patch_validate -> security_validate (re-run PoC must fail)",
+            "- If feasibility is exploitable/likely: craft patch, then patch_apply -> patch_validate (re-run PoC must fail)",
             "- If blocked/constrained but crash is real: still patch (defense-in-depth) and harden via mitigation_inject",
         ])
         text = "\n".join(sections)

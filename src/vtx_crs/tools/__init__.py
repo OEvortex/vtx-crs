@@ -142,6 +142,15 @@ def register_with_vtx() -> None:
         vtx_ai_tools._DEFAULT_TOOL_NAMES[:] = [
             name for name in vtx_ai_tools._DEFAULT_TOOL_NAMES if name not in DENIED_TOOLS
         ]
+
+        # Also strip denied tools from the live registries so the
+        # ``lookup_default_tool`` fallback in ``_finalize_tool_call_data``
+        # cannot resolve them after the default-name lists are filtered.
+        for name in DENIED_TOOLS:
+            vtx_ai_tools.unregister_tool(name)
+            vtx_tools.tools_by_name.pop(name, None)
+            vtx_tools.all_tools_set.discard(name)
+        vtx_tools.all_tools[:] = [t for t in vtx_tools.all_tools if t.name not in DENIED_TOOLS]
     except Exception:
         pass
 

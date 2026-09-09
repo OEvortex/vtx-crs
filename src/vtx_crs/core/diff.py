@@ -68,11 +68,19 @@ def _normalize_path(path: str) -> str:
 
 def parse_unified_diff(diff_text: str) -> list[FileDiff]:
     """Parse unified diff text into FileDiff objects (skips binary diffs)."""
+    # Strip markdown code fence markers if agent wrapped diff in ```diff ... ```
+    cleaned_lines: list[str] = []
+    for line in diff_text.splitlines():
+        trimmed = line.strip()
+        if trimmed.startswith("```"):
+            continue
+        cleaned_lines.append(line)
+
     files: list[FileDiff] = []
     current: FileDiff | None = None
     current_hunk: Hunk | None = None
 
-    for raw_line in diff_text.splitlines():
+    for raw_line in cleaned_lines:
         line = raw_line
         if line.startswith("diff --git "):
             if current is not None:
@@ -88,13 +96,21 @@ def parse_unified_diff(diff_text: str) -> list[FileDiff]:
                 current_hunk = None
             continue
 
-        if line.startswith("--- ") or line.startswith("+++ "):
+        if line.startswith("--- "):
+            # If current file already has a new_path, this --- starts a new file diff
+            if current is not None and current.new_path:
+                files.append(current)
+                current = None
             if current is None:
                 current = FileDiff(old_path="", new_path="")
-            if line.startswith("--- ") and not current.old_path:
-                current.old_path = _normalize_path(line[4:])
-            elif line.startswith("+++ ") and not current.new_path:
-                current.new_path = _normalize_path(line[4:])
+            current.old_path = _normalize_path(line[4:])
+            current_hunk = None
+            continue
+
+        if line.startswith("+++ "):
+            if current is None:
+                current = FileDiff(old_path="", new_path="")
+            current.new_path = _normalize_path(line[4:])
             current_hunk = None
             continue
 
@@ -120,8 +136,11 @@ def parse_unified_diff(diff_text: str) -> list[FileDiff]:
                 current_hunk.lines.append(("+", line[1:]))
             elif line.startswith("-"):
                 current_hunk.lines.append(("-", line[1:]))
+            elif line == "":
+                # Unified diff format permits an empty line instead of ' ' for blank context lines
+                current_hunk.lines.append((" ", ""))
             else:
-                # Unrecognized line (e.g. stray header) ends the hunk.
+                # Unrecognized line (e.g. index header, stray comment) ends the hunk.
                 current_hunk = None
 
     if current is not None:
@@ -142,7 +161,11 @@ def _original_block(hunk: Hunk) -> list[str]:
 def _block_matches(lines: list[str], pos: int, block: list[str]) -> bool:
     if pos + len(block) > len(lines):
         return False
-    return all(lines[pos + i] == expected for i, expected in enumerate(block))
+    # First try exact match
+    if all(lines[pos + i] == expected for i, expected in enumerate(block)):
+        return True
+    # Fallback: whitespace-stripped match for lines to tolerate whitespace drift
+    return all(lines[pos + i].rstrip() == expected.rstrip() for i, expected in enumerate(block))
 
 
 def _find_hunk_position(lines: list[str], hunk: Hunk, search_radius: int = 40) -> int | None:
@@ -170,7 +193,7 @@ def _find_hunk_position(lines: list[str], hunk: Hunk, search_radius: int = 40) -
     # Fall back to scanning the whole file for the first block line.
     first = block[0]
     for i, line in enumerate(lines):
-        if line == first and _block_matches(lines, i, block):
+        if (line == first or line.rstrip() == first.rstrip()) and _block_matches(lines, i, block):
             return i
     return None
 
@@ -206,18 +229,23 @@ def apply_unified_diff(
         if target_resolved != base_resolved and base_resolved not in target_resolved.parents:
             rejected += 1
             continue
-        if not target.exists():
-            rejected += 1
-            continue
-        try:
-            # newline="" keeps \r\n intact so CRLF files stay CRLF.
-            with open(target, encoding="utf-8", newline="") as fh:
-                content = fh.read()
-        except (OSError, UnicodeDecodeError):
+        is_new_file = not target.exists() and (fd.old_path == "" or not fd.old_path)
+        if not target.exists() and not is_new_file:
             rejected += 1
             continue
 
-        lines = content.splitlines()
+        if is_new_file:
+            content = ""
+        else:
+            try:
+                # newline="" keeps \r\n intact so CRLF files stay CRLF.
+                with open(target, encoding="utf-8", newline="") as fh:
+                    content = fh.read()
+            except (OSError, UnicodeDecodeError):
+                rejected += 1
+                continue
+
+        lines = content.splitlines() if content else []
         # Track whether the file ends with a newline and its line-ending style
         # so we can preserve them.
         ends_with_newline = content.endswith("\n") if content else True
@@ -245,9 +273,10 @@ def apply_unified_diff(
 
         if ok:
             new_content = newline.join(result_lines)
-            if ends_with_newline:
+            if ends_with_newline and (new_content or not is_new_file):
                 new_content += newline
             if not dry_run:
+                target.parent.mkdir(parents=True, exist_ok=True)
                 with open(target, "w", encoding="utf-8", newline="") as fh:
                     fh.write(new_content)
             changed.append(fd.target_path)

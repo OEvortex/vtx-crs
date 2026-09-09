@@ -215,7 +215,8 @@ TOOL_USE_RULES = """# Strict Operational Rules & Tool Calling Protocol
   - Use `unified_scan` for discovery over separate `vuln_scan` + `sast_scan` + `taint_analyze`.
   - Use `offensive_chain` for crash processing over separate triage, feasibility, and PoV generation.
   - Use `patch_validate` with `validation_command` for security verification instead of standalone `security_validate`.
-- **Dry-Run Diff Application**: Always execute `patch_apply(..., dry_run=True)` before applying modifications to disk.
+- **Dry-Run Diff Application**: Always execute `patch_apply(diff="...", dry_run=True)` before applying modifications to disk (`dry_run=False`). Pass the standard unified diff directly (with `--- a/path` and `+++ b/path` headers) or provide the path to a patch file. Never pass shell commands (like `cat ...`) to `patch_apply`.
+- **Patch Validation**: Call `patch_validate(patch_file="...", validation_command="...")` passing either a path to a diff file or the raw unified diff text.
 - **Non-Destructive Proofs**: PoCs must verify reachability without destructive payloads (e.g., executing `id` or reading harmless markers).
 - **Graceful Tool Degradation**: If an external binary (e.g., `semgrep`, `radamsa`, `strace`) is unavailable, rely on 
   internal AST/regex fallback engines and document the environment constraint without halting.

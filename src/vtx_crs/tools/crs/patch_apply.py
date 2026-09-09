@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+from pathlib import Path
 
 from pydantic import BaseModel
 from vtx.core.types import ToolResult
@@ -30,33 +31,68 @@ from pydantic import BaseModel, Field
 
 
 class PatchApplyParams(BaseModel):
-    diff: str = Field(..., description="Unified diff patch (--- / +++ / @@ hunks).")
-    repo_path: str = Field(default="", description="Project root path. Defaults to the active case repo.")
-    finding_ids: list[str] = Field(default_factory=list, description="IDs of findings this patch resolves.")
-    summary: str = Field(default="", description="Short explanation of the fix mechanism.")
-    dry_run: bool = Field(default=False, description="Validate the patch without writing changes.")
+    diff: str = Field(
+        ...,
+        description=(
+            "Unified diff string (with standard --- a/... +++ b/... @@ ... @@ headers) OR path to a patch file on disk. "
+            "Pass the raw diff content directly or provide the file path."
+        ),
+    )
+    repo_path: str = Field(
+        default="",
+        description="Absolute path to target repository root. If omitted, defaults to the active case repo.",
+    )
+    finding_ids: list[str] = Field(
+        default_factory=list,
+        description="List of case finding IDs (e.g. ['F-...']) that this patch resolves.",
+    )
+    summary: str = Field(
+        default="",
+        description="Short description of the fix (e.g. 'Fix SSRF by adding URL validation').",
+    )
+    dry_run: bool = Field(
+        default=False,
+        description="When True, checks if the patch applies cleanly without writing changes to disk.",
+    )
 
 
 class PatchApplyTool(BaseTool[PatchApplyParams]):
     name = "patch_apply"
     description = (
-        "Applies a unified diff patch to the repository and tracks it in the case ledger. Use after designing a fix. "
-        "Call with diff containing the unified patch; set dry_run to preview."
+        "Applies a unified diff patch to the target codebase and records the patch in the case ledger. "
+        "Supports standard unified diff format (--- a/file +++ b/file @@ ... @@) as raw diff text or a patch file path. "
+        "Set dry_run=True to test whether the diff applies cleanly before writing changes, then dry_run=False to apply."
     )
     params = PatchApplyParams
     mutating = True
-    prompt_guidelines = ()
+    prompt_guidelines = (
+        "Pass the unified diff directly in the `diff` field using standard format (--- a/file, +++ b/file, @@ hunks) or give a path to a patch file.",
+        "Ensure context lines match existing code in the target repository.",
+        "Always pass finding_ids if fixing specific findings so their status updates in the case.",
+        "Use dry_run=True first to verify the patch applies cleanly.",
+    )
 
     async def execute(
         self, params: PatchApplyParams, cancel_event: asyncio.Event | None = None
     ) -> ToolResult:
-        if not params.diff.strip():
+        diff_text = params.diff.strip()
+        if not diff_text:
             return ToolResult(
                 success=False,
-                result="Empty diff. Provide a unified diff (--- / +++ / @@ hunks).",
+                result="Empty diff. Provide a unified diff (--- / +++ / @@ hunks) or path to a patch file.",
                 ui_summary="Empty diff",
                 ui_details="",
             )
+
+        # If agent passed a command like "cat /path/to/patch" or raw file path
+        if diff_text.startswith("cat "):
+            diff_text = diff_text[4:].strip().strip("'\"")
+        potential_file = Path(diff_text)
+        if potential_file.is_file():
+            try:
+                diff_text = potential_file.read_text(encoding="utf-8", errors="ignore")
+            except OSError:
+                pass
 
         repo = resolve_repo_path(params.repo_path, _case_manager.active_case.repo_path)
         if not repo.exists() or not repo.is_dir():
@@ -67,12 +103,12 @@ class PatchApplyTool(BaseTool[PatchApplyParams]):
                 ui_details="",
             )
 
-        result = apply_unified_diff(params.diff, base_dir=repo, dry_run=params.dry_run)
+        result = apply_unified_diff(diff_text, base_dir=repo, dry_run=params.dry_run)
 
         case = _case_manager.active_case
         if not params.dry_run:
             patch = PatchRecord(
-                diff=params.diff,
+                diff=diff_text,
                 finding_ids=list(params.finding_ids),
                 summary=params.summary or f"Patch {len(case.patches) + 1}",
                 status=PatchStatus.APPLIED if result.success else PatchStatus.FAILED,

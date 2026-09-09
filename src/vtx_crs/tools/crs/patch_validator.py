@@ -38,25 +38,40 @@ from pydantic import BaseModel, Field
 
 class PatchValidateParams(BaseModel):
     repo_path: str = Field(default="", description="Project root path. Defaults to the active case repo.")
-    patch_file: str = Field(default="", description="Path to the patch diff file to validate.")
-    build_command: str = Field(default="python -m compileall -q .", description="Build command inside the sandbox (default: python -m compileall -q .).")
+    patch_file: str = Field(
+        default="",
+        description="Path to the patch diff file OR raw unified diff text to validate.",
+    )
+    build_command: str = Field(
+        default="python -m compileall -q .",
+        description="Build command inside the sandbox (default: python -m compileall -q .).",
+    )
     test_command: str = Field(default="", description="Regression test command inside the sandbox.")
     strict_tests: bool = Field(default=True, description="Fail validation if any unit test fails.")
-    validation_command: str = Field(default="", description="Optional post-build/test validation command (e.g., re-run PoC) to prove the fix.")
-    expected_validation_exit_code: int | None = Field(default=0, description="Expected exit code from validation_command. Defaults to 0.")
+    validation_command: str = Field(
+        default="",
+        description="Optional post-build/test validation command (e.g., re-run PoC) to prove the fix.",
+    )
+    expected_validation_exit_code: int | None = Field(
+        default=0, description="Expected exit code from validation_command. Defaults to 0."
+    )
     finding_id: str = Field(default="", description="ID of the finding being validated.")
 
 
 class PatchValidatorTool(BaseTool[PatchValidateParams]):
     name = "patch_validate"
     description = (
-        "Applies a patch in an isolated temp copy, then builds, runs tests, and optionally "
-        "re-runs a validation command (e.g., a PoC) to verify the fix. "
-        "Use after patch_apply to validate fixes. Call with patch_file pointing to the diff."
+        "Applies a patch in an isolated temporary sandbox, then builds, runs regression tests, and optionally "
+        "re-runs a validation command (e.g., PoC reproducer) to verify the fix. "
+        "Call with patch_file (pointing to diff file or containing raw diff string) and optional validation_command."
     )
     params = PatchValidateParams
     mutating = True
-    prompt_guidelines = ()
+    prompt_guidelines = (
+        "Pass patch_file pointing to the diff file created on disk or pass raw diff content.",
+        "Provide validation_command to re-test the PoC reproducer against the patched code.",
+        "Always pass finding_id so verified findings are marked FIXED in the case ledger.",
+    )
 
     async def execute(
         self, params: PatchValidateParams, cancel_event: asyncio.Event | None = None
@@ -70,19 +85,17 @@ class PatchValidatorTool(BaseTool[PatchValidateParams]):
                 ui_details="",
             )
 
-        patch_path = Path(params.patch_file)
-        if not patch_path.exists():
+        patch_file_str = params.patch_file.strip()
+        if not patch_file_str:
             return ToolResult(
                 success=False,
-                result=f"Patch file does not exist: {patch_path}",
+                result="Empty patch_file parameter. Provide a path to a patch diff file or raw unified diff text.",
                 ui_summary="Missing patch",
                 ui_details="",
             )
 
-        # Apply patch in a temporary copy so we don't pollute the case repo.
-        with tempfile.TemporaryDirectory(prefix="vtx_crs_patch_") as tmp:
-            work = Path(tmp)
-            self._copy_tree(repo, work)
+        patch_path = Path(patch_file_str)
+        if patch_path.is_file():
             try:
                 diff_text = patch_path.read_text(encoding="utf-8", errors="ignore")
             except OSError as exc:
@@ -92,6 +105,14 @@ class PatchValidatorTool(BaseTool[PatchValidateParams]):
                     ui_summary="Patch read failed",
                     ui_details="",
                 )
+        else:
+            # Treat patch_file argument as the raw diff content itself
+            diff_text = patch_file_str
+
+        # Apply patch in a temporary copy so we don't pollute the case repo.
+        with tempfile.TemporaryDirectory(prefix="vtx_crs_patch_") as tmp:
+            work = Path(tmp)
+            self._copy_tree(repo, work)
             apply_result = await PatchApplyTool().execute(
                 PatchApplyParams(diff=diff_text, repo_path=str(work)),
                 cancel_event=cancel_event,

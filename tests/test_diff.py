@@ -1,5 +1,7 @@
 from pathlib import Path
 
+import pytest
+
 from vtx_crs.core.diff import apply_unified_diff, parse_unified_diff
 
 ORIGINAL = """import os
@@ -212,3 +214,88 @@ def test_patch_preserves_crlf(tmp_path: Path) -> None:
     result = apply_unified_diff(diff, base_dir=tmp_path)
     assert result.success, result.message
     assert target.read_bytes() == b"one\r\nTHREE\r\n"
+
+
+def test_empty_context_lines(tmp_path: Path) -> None:
+    target = tmp_path / "blank.py"
+    target.write_text("def foo():\n\n    x = 1\n\n    return x\n", encoding="utf-8")
+    diff = """--- a/blank.py
++++ b/blank.py
+@@ -1,5 +1,5 @@
+ def foo():
+
+-    x = 1
++    x = 2
+
+     return x
+"""
+    result = apply_unified_diff(diff, base_dir=tmp_path)
+    assert result.success, result.message
+    assert "x = 2" in target.read_text(encoding="utf-8")
+
+
+def test_multi_file_without_git_header(tmp_path: Path) -> None:
+    (tmp_path / "f1.py").write_text("a = 1\n", encoding="utf-8")
+    (tmp_path / "f2.py").write_text("b = 1\n", encoding="utf-8")
+    diff = """--- a/f1.py
++++ b/f1.py
+@@ -1,1 +1,1 @@
+-a = 1
++a = 2
+--- a/f2.py
++++ b/f2.py
+@@ -1,1 +1,1 @@
+-b = 1
++b = 2
+"""
+    result = apply_unified_diff(diff, base_dir=tmp_path)
+    assert result.success, result.message
+    assert (tmp_path / "f1.py").read_text(encoding="utf-8") == "a = 2\n"
+    assert (tmp_path / "f2.py").read_text(encoding="utf-8") == "b = 2\n"
+
+
+def test_markdown_code_fence_handling(tmp_path: Path) -> None:
+    target = tmp_path / "code.py"
+    target.write_text("value = old\n", encoding="utf-8")
+    diff = """```diff
+--- a/code.py
++++ b/code.py
+@@ -1,1 +1,1 @@
+-value = old
++value = new
+```"""
+    result = apply_unified_diff(diff, base_dir=tmp_path)
+    assert result.success, result.message
+    assert target.read_text(encoding="utf-8") == "value = new\n"
+
+
+def test_create_new_file(tmp_path: Path) -> None:
+    diff = """--- /dev/null
++++ b/new_file.txt
+@@ -0,0 +1,2 @@
++hello
++world
+"""
+    result = apply_unified_diff(diff, base_dir=tmp_path)
+    assert result.success, result.message
+    assert (tmp_path / "new_file.txt").read_text(encoding="utf-8") == "hello\nworld\n"
+
+
+@pytest.mark.asyncio
+async def test_patch_apply_tool(tmp_path: Path) -> None:
+    import pytest
+    from vtx_crs.tools.crs.patch_apply import PatchApplyParams, PatchApplyTool
+
+    target = tmp_path / "test.py"
+    target.write_text("x = 1\n", encoding="utf-8")
+
+    patch_file = tmp_path / "sample.patch"
+    patch_file.write_text("--- a/test.py\n+++ b/test.py\n@@ -1,1 +1,1 @@\n-x = 1\n+x = 99\n", encoding="utf-8")
+
+    tool = PatchApplyTool()
+
+    # Test with "cat /path/to/patch"
+    res = await tool.execute(PatchApplyParams(diff=f"cat {patch_file}", repo_path=str(tmp_path)))
+    assert res.success, res.result
+    assert target.read_text(encoding="utf-8") == "x = 99\n"
+
